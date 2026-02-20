@@ -50,9 +50,8 @@ func Run(){
 	}
 
 	http.HandleFunc("/services", listServices);
-	http.HandleFunc("/scale/down", scaleDown);
-	http.HandleFunc("/scale/up", scaleUp);
 	http.HandleFunc("/prepare", prepare);
+	http.HandleFunc("/cleanup", cleanup);
 	go func(){
 		err = server.ListenAndServe(); 
 		if err == http.ErrServerClosed {
@@ -87,6 +86,7 @@ func bearerAuth(w http.ResponseWriter, r *http.Request)bool {
 func listServices(w http.ResponseWriter, r *http.Request){
 	if(r.Method != http.MethodGet){
 		w.WriteHeader(http.StatusMethodNotAllowed);
+		fmt.Fprintln(w, "Method Not Allowed");
 		return;
 	}
 

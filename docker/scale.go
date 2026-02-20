@@ -1,35 +1,13 @@
-package docker;
-import(
-	"net/http"
-	"io"
-	"encoding/json"
+package docker
+
+import (
 	"context"
+
 	"github.com/moby/moby/client"
 );
 
-func scaleDown(w http.ResponseWriter, r *http.Request){
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed);
-		return;
-	}
-
-	if !bearerAuth(w, r) {return}
-
-	rawBody, err := io.ReadAll(r.Body);
-	if err != nil {
-		panic("Failed to read body!" + err.Error());
-	}
-
-	var parsedBody struct{
-		ServiceId string `json:"serviceId"`;
-	};
-
-	err = json.Unmarshal(rawBody, &parsedBody);
-	if err != nil{
-		panic("Failed to unmarshal request body!"+ err.Error());
-	}
-
-	inspectresoult, err := ApiClient.ServiceInspect(context.Background(), parsedBody.ServiceId, client.ServiceInspectOptions{});
+func scaleDown(serviceId string){
+	inspectresoult, err := ApiClient.ServiceInspect(context.Background(), serviceId, client.ServiceInspectOptions{});
 
 	if err != nil{
 		panic("Error inspecting service!"+ err.Error());
@@ -41,9 +19,9 @@ func scaleDown(w http.ResponseWriter, r *http.Request){
 	newScale := uint64(0);
 	updatedSpec.Mode.Replicated.Replicas = &newScale;
 
-	scale.Store(parsedBody.ServiceId, *originalScale);
+	scale.Store(serviceId, *originalScale);
 
-	_, err = ApiClient.ServiceUpdate(context.Background(), parsedBody.ServiceId, client.ServiceUpdateOptions{
+	_, err = ApiClient.ServiceUpdate(context.Background(), serviceId, client.ServiceUpdateOptions{
 		Spec: updatedSpec,
 		Version: inspectresoult.Service.Version,
 	});
@@ -53,36 +31,14 @@ func scaleDown(w http.ResponseWriter, r *http.Request){
 	}
 }
 
-func scaleUp(w http.ResponseWriter, r *http.Request){
-	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed);
-		return;
-	}
-
-	if !bearerAuth(w, r) {return}
-
-
-	rawBody, err := io.ReadAll(r.Body);
-	if err != nil {
-		panic("Failed to read body!");
-	}
-
-	var parsedBody struct{
-		ServiceId string `json:"serviceId"`;
-	};
-
-	err = json.Unmarshal(rawBody, &parsedBody);
-	if err != nil{
-		panic("Failed to unmarshal request body!"+ err.Error());
-	}
-
-	inspectresoult, err := ApiClient.ServiceInspect(context.Background(), parsedBody.ServiceId, client.ServiceInspectOptions{});
+func scaleUp(serviceId string){
+	inspectresoult, err := ApiClient.ServiceInspect(context.Background(), serviceId, client.ServiceInspectOptions{});
 
 	if err != nil{
 		panic("Error inspecting service!"+ err.Error());
 	}
 
-	originalScale, ok := scale.Load(parsedBody.ServiceId);  
+	originalScale, ok := scale.Load(serviceId);  
 	if(!ok){
 		panic("Its not okay!");
 	}
@@ -96,7 +52,7 @@ func scaleUp(w http.ResponseWriter, r *http.Request){
 	updatedSpec.Mode.Replicated.Replicas = &originalScaleChecked;
 
 
-	ApiClient.ServiceUpdate(context.Background(), parsedBody.ServiceId, client.ServiceUpdateOptions{
+	ApiClient.ServiceUpdate(context.Background(), serviceId, client.ServiceUpdateOptions{
 		Spec: updatedSpec,
 		Version: inspectresoult.Service.Version,
 		

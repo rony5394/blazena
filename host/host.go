@@ -1,15 +1,19 @@
 package host
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 
 	cfg "github.com/rony5394/blazena/config"
+	"github.com/moby/moby/client"
 )
 
 var token string = "12345";
+var DockerClient *client.Client;
 
 type aService struct{
 	ServiceId string `json:"serviceId"`;
@@ -26,15 +30,36 @@ func Run(Config cfg.Config) {
 			fmt.Println("Node", service.Node, "refferenced in", service.ServiceId ,"service does not exists!");
 			continue;
 		}
-		for _, volume := range service.VolumeNames{
-			remoteFilePath := Config.Nodes[service.Node].DockerVolumePath + "/" + volume;
-			remotePath := Config.User + "@" + Config.Nodes[service.Node].Ip + ":" + remoteFilePath;
-			base := "rsync -avh --delete --progress -e 'ssh -i ./ssh-key' ";
-			localPath := Config.LocalBasePath + "/@current/@" + service.Node;
+		
+		var body struct{
+			ServiceId string `json:"serviceId"`
+		} = struct{ServiceId string "json:\"serviceId\""}{
+				ServiceId: service.ServiceId,
+			}
 
-			fmt.Println(base + remotePath + " " + localPath);
+		bodyEncoded, err := json.Marshal(body);
 
+		if err != nil {
+			panic("Failed to marshal body."+ err.Error());
 		}
+
+		rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/prepare", bytes.NewBuffer(bodyEncoded)); 
+
+		if err != nil{
+			panic("Failed to create http request"+ err.Error());
+		}
+
+		rq.Header.Set("Authorization", "Bearer "+ token);
+		rq.Close = true;
+		rs, err := http.DefaultClient.Do(rq);
+		defer rs.Body.Close();
+
+		if err != nil{
+			panic("Failed to send http request"+ err.Error());
+		}
+
+		os.Exit(0);
+
 	}
 }
 
