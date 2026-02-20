@@ -13,7 +13,8 @@ import (
 
 	"net/http"
 
-	"github.com/moby/moby/client"
+	"github.com/docker/docker/api/types/swarm"
+	"github.com/docker/docker/client"
 )
 
 // Add mutex.
@@ -31,17 +32,17 @@ func Run(){
 	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM);
 
 	var err error;
-	ApiClient, err = client.New(client.FromEnv);
+	ApiClient, err = client.NewClientWithOpts(client.FromEnv);
 	if(err != nil){
 		panic("Docker client was not able to init from env!" + err.Error());
 	}
 
-	info, err := ApiClient.Info(context.Background(), client.InfoOptions{});
+	info, err := ApiClient.Info(context.Background())
 	if(err != nil){
 		panic("Error getting info!" + err.Error());
 	}
 
-	if(!info.Info.Swarm.ControlAvailable){
+	if(!info.Swarm.ControlAvailable){
 		panic("Node is not a swarm manager.");
 	}
 
@@ -92,14 +93,14 @@ func listServices(w http.ResponseWriter, r *http.Request){
 
 	if !bearerAuth(w,r) {return};
 
-	list, err := ApiClient.ServiceList(context.Background(), client.ServiceListOptions{});
+	list, err := ApiClient.ServiceList(context.Background(), swarm.ServiceListOptions{}); 
 	if(err != nil){
 		panic("Unable to list services!" + err.Error());
 	}
 
 	var services []aService;
 
-	for _, service:= range list.Items{
+	for _, service:= range list{
 		var settings map[string]string = service.Spec.Labels; 
 		
 

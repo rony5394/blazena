@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
-	"github.com/moby/moby/client"
+	"github.com/docker/docker/api/types/swarm"
 )
 
 func cleanup(w http.ResponseWriter, r *http.Request){
@@ -33,16 +34,14 @@ func cleanup(w http.ResponseWriter, r *http.Request){
 		panic("Failed to unmarshal json."+ err.Error());
 	}
 
-	scaleUp(bodyDecoded.ServiceId);
-
-	listResoult, err := ApiClient.ServiceList(context.Background(), client.ServiceListOptions{});
+	listResoult, err := ApiClient.ServiceList(context.Background(), swarm.ServiceListOptions{});
 	if err != nil {
 		panic("Failed to list services."+ err.Error());
 	}
 
 	var helperServiceId string;
 
-	for _, service := range listResoult.Items {
+	for _, service := range listResoult{
 		if service.Spec.Labels["blazena.helper"] != "true" {
 			continue;
 		}
@@ -54,9 +53,14 @@ func cleanup(w http.ResponseWriter, r *http.Request){
 		panic("Helper service not found!");
 	}
 
-	_, err = ApiClient.ServiceRemove(context.Background(), helperServiceId, client.ServiceRemoveOptions{});
+	err = ApiClient.ServiceRemove(context.Background(), helperServiceId);
 	if err != nil {
 		panic("Failed to remove helper service."+ err.Error());
 	}
+
+	//TODO: Add proper wait system
+	time.Sleep(10*time.Second);
+
+	scaleUp(bodyDecoded.ServiceId);
 	fmt.Fprint(w, bodyDecoded.ServiceId);
 }

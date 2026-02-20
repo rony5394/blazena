@@ -2,14 +2,15 @@ package host
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 
+	"github.com/docker/docker/client"
 	cfg "github.com/rony5394/blazena/config"
-	"github.com/moby/moby/client"
 )
 
 var token string = "12345";
@@ -22,6 +23,16 @@ type aService struct{
 }
 
 func Run(Config cfg.Config) {
+	DockerClient, err := client.NewClientWithOpts(client.FromEnv);
+	if err != nil {
+		panic("Failed to create DockerClient.");
+	}
+
+	_, err = DockerClient.Ping(context.Background())
+	if err != nil {
+		panic("Failed to ping DockerClient.");
+	}
+
 	services := getServices(Config);
 
 	for _, service := range services {

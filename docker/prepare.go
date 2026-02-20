@@ -9,10 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/moby/moby/api/types/mount"
-	"github.com/moby/moby/api/types/network"
-	"github.com/moby/moby/api/types/swarm"
-	"github.com/moby/moby/client"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/swarm"
 )
 
 func prepare(w http.ResponseWriter, r *http.Request){
@@ -22,9 +20,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		return;
 	}
 
-	//if !bearerAuth(w, r){
-	//	return;
-	//}
+	if !bearerAuth(w, r){return;}
 
 	rawBody, err := io.ReadAll(r.Body);
 	if err != nil {
@@ -41,13 +37,15 @@ func prepare(w http.ResponseWriter, r *http.Request){
 	}
 
 	scaleDown(bodyDecoded.ServiceId);
+	//TODO: Add proper wait system
+	time.Sleep(10*time.Second);
 
-	inspectResoults, err := ApiClient.ServiceInspect(context.Background(), bodyDecoded.ServiceId, client.ServiceInspectOptions{});
+	inspectResoults, _, err := ApiClient.ServiceInspectWithRaw(context.Background(), bodyDecoded.ServiceId, swarm.ServiceInspectOptions{});
 	if err != nil{
 		panic("Failed to inspect service."+ err.Error());
 	}
 
-	labels := inspectResoults.Service.Spec.Labels;
+	labels := inspectResoults.Spec.Labels;
 	time.Sleep(10);
 
 	maxConcurrent := uint64(1);
@@ -62,44 +60,42 @@ func prepare(w http.ResponseWriter, r *http.Request){
 
 	for _, targetVolume := range targetVolumes{ 
 	
-		_, err := ApiClient.ServiceCreate(context.Background(), client.ServiceCreateOptions{
-			Spec: swarm.ServiceSpec{
-				Annotations: swarm.Annotations{
-					Labels: map[string]string{"blazena.helper": "true"},
+		_, err := ApiClient.ServiceCreate(context.Background(), swarm.ServiceSpec{
+			Annotations: swarm.Annotations{
+				Labels: map[string]string{"blazena.helper": "true"},
+			},
+			Mode: swarm.ServiceMode{
+				ReplicatedJob: &swarm.ReplicatedJob{
+					MaxConcurrent: &maxConcurrent,
+					TotalCompletions: &totalCompletions,
 				},
-				Mode: swarm.ServiceMode{
-					ReplicatedJob: &swarm.ReplicatedJob{
-						MaxConcurrent: &maxConcurrent,
-						TotalCompletions: &totalCompletions,
-					},
-				},
-				TaskTemplate: swarm.TaskSpec{
-					ContainerSpec: &swarm.ContainerSpec{
-						Image: "docker.io/library/alpine:latest",
-						Command: []string{"sh", "-c", helperCommand},
-						Mounts: []mount.Mount{
-							mount.Mount{
-								Source: targetVolume,
-								Target: "/volume",
-								Type: "volume",
-							},
+			},
+			TaskTemplate: swarm.TaskSpec{
+				ContainerSpec: &swarm.ContainerSpec{
+					Image: "docker.io/library/alpine:latest",
+					Command: []string{"sh", "-c", helperCommand},
+					Mounts: []mount.Mount{
+						mount.Mount{
+							Source: targetVolume,
+							Target: "/volume",
+							Type: "volume",
 						},
 					},
-					Placement: &swarm.Placement{
-						Constraints: []string{"node.hostname=="+targetNode},
-					},
 				},
-				EndpointSpec: &swarm.EndpointSpec{
-					Ports: []swarm.PortConfig{
-						swarm.PortConfig{
-							Protocol: network.TCP,
-							TargetPort: uint32(22),	
-							PublishedPort: uint32(2222),
-						},
+				Placement: &swarm.Placement{
+					Constraints: []string{"node.hostname=="+targetNode},
+				},
+			},
+			EndpointSpec: &swarm.EndpointSpec{
+				Ports: []swarm.PortConfig{
+					swarm.PortConfig{
+						Protocol: swarm.PortConfigProtocolTCP,
+						TargetPort: uint32(22),	
+						PublishedPort: uint32(2222),
 					},
 				},
 			},
-		});
+		}, swarm.ServiceCreateOptions{});
 
 		if err != nil {
 			panic("Failed to create helper service."+ err.Error());
