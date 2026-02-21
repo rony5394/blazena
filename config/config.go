@@ -6,6 +6,5 @@ type Config struct {
 		DockerVolumePath string
 	}
 	DockerManagerBaseUrl string
-	User string
 	LocalBasePath string
 };

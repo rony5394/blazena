@@ -10,6 +10,5 @@
 		}
 	},
 	"DockerManagerBaseUrl": "http://localhost:1234",
-	"User": "blazena",
 	"LocalBasePath": "/archive/@backups"
 }

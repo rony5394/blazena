@@ -7,14 +7,18 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+	"time"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/mount"
+	"github.com/docker/docker/api/types/network"
+	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/client"
+	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	cfg "github.com/rony5394/blazena/config"
 )
 
 var token string = "12345";
-var DockerClient *client.Client;
 
 type aService struct{
 	ServiceId string `json:"serviceId"`;
@@ -33,45 +37,22 @@ func Run(Config cfg.Config) {
 		panic("Failed to ping DockerClient.");
 	}
 
-	services := getServices(Config);
+	createStorageContainer(Config, DockerClient);
 
-	for _, service := range services {
-		_, ok := Config.Nodes[service.Node];
-		if !ok {
-			fmt.Println("Node", service.Node, "refferenced in", service.ServiceId ,"service does not exists!");
-			continue;
-		}
-		
-		var body struct{
-			ServiceId string `json:"serviceId"`
-		} = struct{ServiceId string "json:\"serviceId\""}{
-				ServiceId: service.ServiceId,
-			}
+	// services := getServices(Config);
+	//
+	// for _, service := range services {
+	// 	if !prepareService(Config, service) {continue}
+	//
+	// 	os.Exit(0);
+	//
+	// }
 
-		bodyEncoded, err := json.Marshal(body);
+	time.Sleep(30*time.Second);
 
-		if err != nil {
-			panic("Failed to marshal body."+ err.Error());
-		}
-
-		rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/prepare", bytes.NewBuffer(bodyEncoded)); 
-
-		if err != nil{
-			panic("Failed to create http request"+ err.Error());
-		}
-
-		rq.Header.Set("Authorization", "Bearer "+ token);
-		rq.Close = true;
-		rs, err := http.DefaultClient.Do(rq);
-		defer rs.Body.Close();
-
-		if err != nil{
-			panic("Failed to send http request"+ err.Error());
-		}
-
-		os.Exit(0);
-
-	}
+	DockerClient.ContainerRemove(context.Background(), "BlazenaStorage", container.RemoveOptions{
+		Force: true,
+	});
 }
 
 func getServices(Config cfg.Config)[]aService{
@@ -96,4 +77,74 @@ func getServices(Config cfg.Config)[]aService{
 		panic("Failed to unmarshal response.");
 	}
 	return services;
+}
+
+func prepareService(Config cfg.Config, service aService) bool{
+	_, ok := Config.Nodes[service.Node];
+	if !ok {
+		fmt.Println("Node", service.Node, "refferenced in", service.ServiceId ,"service does not exists!");
+		return false;
+	}
+	
+	var body struct{
+		ServiceId string `json:"serviceId"`
+	} = struct{ServiceId string "json:\"serviceId\""}{
+			ServiceId: service.ServiceId,
+		}
+
+	bodyEncoded, err := json.Marshal(body);
+
+	if err != nil {
+		panic("Failed to marshal body."+ err.Error());
+	}
+
+	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/prepare", bytes.NewBuffer(bodyEncoded)); 
+
+	if err != nil{
+		panic("Failed to create http request"+ err.Error());
+	}
+
+	rq.Header.Set("Authorization", "Bearer "+ token);
+	rq.Close = true;
+	rs, err := http.DefaultClient.Do(rq);
+	defer rs.Body.Close();
+
+	if err != nil{
+		panic("Failed to send http request"+ err.Error());
+	}
+
+	return true;
+}
+
+func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
+	cr, err := DockerClient.ContainerCreate(context.Background(), &container.Config{
+		Image: "docker.io/library/alpine:3",
+		Labels: map[string]string{
+			"blazena.storage": "true",
+		},
+		Cmd: strslice.StrSlice{"sleep", "infinity"},
+	}, &container.HostConfig{
+		Mounts: []mount.Mount{
+				mount.Mount{
+					Type: mount.TypeBind,
+					Source: Config.LocalBasePath,
+					Target: "/volume",
+					ReadOnly: true,
+				},
+			},
+		//AutoRemove: true,
+		NetworkMode: "blazena",
+	}, &network.NetworkingConfig{
+		}, &v1.Platform{}, "BlazenaStorage");
+
+	if err != nil {
+		panic("Failed to create BlazenaStorage container!"+err.Error());
+	}
+
+	err = DockerClient.ContainerStart(context.Background(), cr.ID, container.StartOptions{}); 
+	
+	if err != nil{
+		panic("Failed to start BlazenaStorage container!"+err.Error());
+	}
+
 }

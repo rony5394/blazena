@@ -92,6 +92,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 						Protocol: swarm.PortConfigProtocolTCP,
 						TargetPort: uint32(22),	
 						PublishedPort: uint32(2222),
+						PublishMode: swarm.PortConfigPublishModeHost,
 					},
 				},
 			},
