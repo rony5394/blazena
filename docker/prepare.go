@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/docker/docker/api/types/mount"
@@ -29,6 +28,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 
 	var bodyDecoded struct{
 		ServiceId string `json:"serviceId"`
+		VolumeId string `json:"volumeId"`
 	};
 
 	err = json.Unmarshal(rawBody, &bodyDecoded);
@@ -50,7 +50,6 @@ func prepare(w http.ResponseWriter, r *http.Request){
 
 	maxConcurrent := uint64(1);
 	totalCompletions := uint64(1);
-	targetVolumes := strings.Split(labels["blazena.volumes"], ",");
 	targetNode := labels["blazena.node"];
 	helperCommand := `apk add openssh rsync && \
 			ssh-keygen -t ed25519 -f /host_key && \
@@ -58,50 +57,58 @@ func prepare(w http.ResponseWriter, r *http.Request){
 			echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIByYbl8vu946LPycSO5pBohq3vMvvl+wX7snu1Bqpd7p test" > /root/.ssh/authorized_keys && \
 			/usr/sbin/sshd -h /host_key -p 22 -D`;
 
-	for _, targetVolume := range targetVolumes{ 
 	
-		_, err := ApiClient.ServiceCreate(context.Background(), swarm.ServiceSpec{
-			Annotations: swarm.Annotations{
-				Labels: map[string]string{"blazena.helper": "true"},
+	_, err = ApiClient.ServiceCreate(context.Background(), swarm.ServiceSpec{
+		Annotations: swarm.Annotations{
+			Labels: map[string]string{"blazena.helper": "true"},
+		},
+		Mode: swarm.ServiceMode{
+			ReplicatedJob: &swarm.ReplicatedJob{
+				MaxConcurrent: &maxConcurrent,
+				TotalCompletions: &totalCompletions,
 			},
-			Mode: swarm.ServiceMode{
-				ReplicatedJob: &swarm.ReplicatedJob{
-					MaxConcurrent: &maxConcurrent,
-					TotalCompletions: &totalCompletions,
-				},
-			},
-			TaskTemplate: swarm.TaskSpec{
-				ContainerSpec: &swarm.ContainerSpec{
-					Image: "docker.io/library/alpine:latest",
-					Command: []string{"sh", "-c", helperCommand},
-					Mounts: []mount.Mount{
-						mount.Mount{
-							Source: targetVolume,
-							Target: "/volume",
-							Type: "volume",
-						},
-					},
-				},
-				Placement: &swarm.Placement{
-					Constraints: []string{"node.hostname=="+targetNode},
-				},
-			},
-			EndpointSpec: &swarm.EndpointSpec{
-				Ports: []swarm.PortConfig{
-					swarm.PortConfig{
-						Protocol: swarm.PortConfigProtocolTCP,
-						TargetPort: uint32(22),	
-						PublishedPort: uint32(2222),
-						PublishMode: swarm.PortConfigPublishModeHost,
+		},
+		TaskTemplate: swarm.TaskSpec{
+			ContainerSpec: &swarm.ContainerSpec{
+				Image: "docker.io/library/alpine:latest",
+				Command: []string{"sh", "-c", helperCommand},
+				Mounts: []mount.Mount{
+					mount.Mount{
+						Source: bodyDecoded.VolumeId,
+						Target: "/volume",
+						Type: "volume",
 					},
 				},
 			},
-		}, swarm.ServiceCreateOptions{});
+			Placement: &swarm.Placement{
+				Constraints: []string{"node.hostname=="+targetNode},
+			},
+		},
+		EndpointSpec: &swarm.EndpointSpec{
+			Ports: []swarm.PortConfig{
+				swarm.PortConfig{
+					Protocol: swarm.PortConfigProtocolTCP,
+					TargetPort: uint32(22),	
+					PublishedPort: uint32(2222),
+					PublishMode: swarm.PortConfigPublishModeHost,
+				},
+			},
+		},
+	}, swarm.ServiceCreateOptions{});
 
-		if err != nil {
-			panic("Failed to create helper service."+ err.Error());
-		}
-
-		fmt.Fprint(w, bodyDecoded.ServiceId);
+	if err != nil {
+		panic("Failed to create helper service."+ err.Error());
 	}
+
+	fmt.Fprint(w, bodyDecoded.ServiceId);
 }
+
+func contains(slice []string, str string) bool {
+    for _, s := range slice {
+        if s == str {
+            return true
+        }
+    }
+    return false
+}
+

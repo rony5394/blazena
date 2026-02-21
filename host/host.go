@@ -39,16 +39,22 @@ func Run(Config cfg.Config) {
 
 	createStorageContainer(Config, DockerClient);
 
-	// services := getServices(Config);
-	//
-	// for _, service := range services {
-	// 	if !prepareService(Config, service) {continue}
-	//
-	// 	os.Exit(0);
-	//
-	// }
+	services := getServices(Config);
 
-	time.Sleep(30*time.Second);
+	for _, service := range services {
+		for _, volume := range service.VolumeNames{
+			fmt.Println("Preparing: " + service.ServiceId + " volume: " + volume);
+			if !prepareService(Config, service, volume) {continue}
+			fmt.Println("Done!");
+			time.Sleep(5*time.Second);
+			fmt.Println("Cleaning Up: " + service.ServiceId + " volume: " + volume);
+			cleanupService(Config, service);
+			fmt.Println("Done!");
+
+
+		}
+	}
+
 
 	DockerClient.ContainerRemove(context.Background(), "BlazenaStorage", container.RemoveOptions{
 		Force: true,
@@ -79,7 +85,7 @@ func getServices(Config cfg.Config)[]aService{
 	return services;
 }
 
-func prepareService(Config cfg.Config, service aService) bool{
+func prepareService(Config cfg.Config, service aService, targetVolume string) bool{
 	_, ok := Config.Nodes[service.Node];
 	if !ok {
 		fmt.Println("Node", service.Node, "refferenced in", service.ServiceId ,"service does not exists!");
@@ -88,8 +94,10 @@ func prepareService(Config cfg.Config, service aService) bool{
 	
 	var body struct{
 		ServiceId string `json:"serviceId"`
-	} = struct{ServiceId string "json:\"serviceId\""}{
+		VolumeId string `json:"volumeId"`
+	} = struct{ServiceId string "json:\"serviceId\""; VolumeId string "json:\"volumeId\""}{
 			ServiceId: service.ServiceId,
+			VolumeId: targetVolume,
 		}
 
 	bodyEncoded, err := json.Marshal(body);
@@ -116,9 +124,48 @@ func prepareService(Config cfg.Config, service aService) bool{
 	return true;
 }
 
+func cleanupService(Config cfg.Config, service aService)bool{
+	_, ok := Config.Nodes[service.Node];
+	if !ok {
+		fmt.Println("Node", service.Node, "refferenced in", service.ServiceId ,"service does not exists!");
+		return false;
+	}
+	
+	var body struct{
+		ServiceId string `json:"serviceId"`
+		VolumeId string `json:"volumeId"`
+	} = struct{ServiceId string "json:\"serviceId\""; VolumeId string "json:\"volumeId\""}{
+			ServiceId: service.ServiceId,
+		}
+
+	bodyEncoded, err := json.Marshal(body);
+
+	if err != nil {
+		panic("Failed to marshal body."+ err.Error());
+	}
+
+	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/cleanup", bytes.NewBuffer(bodyEncoded)); 
+
+	if err != nil{
+		panic("Failed to create http request"+ err.Error());
+	}
+
+	rq.Header.Set("Authorization", "Bearer "+ token);
+	rq.Close = true;
+	rs, err := http.DefaultClient.Do(rq);
+	defer rs.Body.Close();
+
+	if err != nil{
+		panic("Failed to send http request"+ err.Error());
+	}
+
+	return true;
+
+}
+
 func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
 	cr, err := DockerClient.ContainerCreate(context.Background(), &container.Config{
-		Image: "docker.io/library/alpine:3",
+		Image: "docker.io/library/alpine:3.3",
 		Labels: map[string]string{
 			"blazena.storage": "true",
 		},
