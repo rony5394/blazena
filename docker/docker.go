@@ -13,6 +13,7 @@ import (
 
 	"net/http"
 
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
 )
@@ -53,6 +54,16 @@ func Run(){
 	http.HandleFunc("/services", listServices);
 	http.HandleFunc("/prepare", prepare);
 	http.HandleFunc("/cleanup", cleanup);
+
+	ApiClient.NetworkCreate(context.Background(), "blazenaPohar", network.CreateOptions{
+		Attachable: true,
+		// Internal: true,
+		Driver: "overlay",
+		Labels: map[string]string{
+			"blazena.pohar": "true",
+		},
+	});
+
 	go func(){
 		err = server.ListenAndServe(); 
 		if err == http.ErrServerClosed {
@@ -69,6 +80,7 @@ func Run(){
 	<-ctx.Done();
 	fmt.Println("Stopping http server.");
 	server.Close();
+	ApiClient.NetworkRemove(context.Background(), "blazenaPohar");
 	fmt.Println("Exiting!");
 }
 

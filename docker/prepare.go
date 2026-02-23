@@ -51,9 +51,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 	maxConcurrent := uint64(1);
 	totalCompletions := uint64(1);
 	targetNode := labels["blazena.node"];
-	helperCommand := `apk add openssh rsync && \
-			ssh-keygen -t ed25519 -f /host_key && \
-			mkdir -p /root/.ssh/ && \
+	helperCommand := `ssh-keygen -t ed25519 -f /host_key && \
 			echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIByYbl8vu946LPycSO5pBohq3vMvvl+wX7snu1Bqpd7p test" > /root/.ssh/authorized_keys && \
 			/usr/sbin/sshd -h /host_key -p 22 -D`;
 
@@ -70,7 +68,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		},
 		TaskTemplate: swarm.TaskSpec{
 			ContainerSpec: &swarm.ContainerSpec{
-				Image: "docker.io/library/alpine:latest",
+				Image: "registry.lan.ronycloud.dev/blazena/helper:latest",
 				Command: []string{"sh", "-c", helperCommand},
 				Mounts: []mount.Mount{
 					mount.Mount{

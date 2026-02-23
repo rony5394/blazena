@@ -18,6 +18,7 @@ func scaleDown(serviceId string){
 
 	newScale := uint64(0);
 	updatedSpec.Mode.Replicated.Replicas = &newScale;
+	updatedSpec.Labels["blazena.scaledDown"] = "true";
 
 	scale.Store(serviceId, *originalScale);
 
@@ -46,6 +47,7 @@ func scaleUp(serviceId string){
 	updatedSpec := inspectresoult.Spec;
 
 	updatedSpec.Mode.Replicated.Replicas = &originalScaleChecked;
+	delete(updatedSpec.Labels, "blazena.scaledDown");
 
 	ApiClient.ServiceUpdate(context.Background(), serviceId, inspectresoult.Version, updatedSpec, swarm.ServiceUpdateOptions{});
 }

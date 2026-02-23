@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
@@ -46,16 +47,37 @@ func Run(Config cfg.Config) {
 			fmt.Println("Preparing: " + service.ServiceId + " volume: " + volume);
 			if !prepareService(Config, service, volume) {continue}
 			fmt.Println("Done!");
-			time.Sleep(5*time.Second);
-			fmt.Println("Cleaning Up: " + service.ServiceId + " volume: " + volume);
+
+			command := `apk add --no-cache rsync openssh-client && \
+				echo "It Works Under Water!"`;
+				//rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=no" \
+				//root@`+Config.Nodes[service.Node].Ip+`:/volume/ /tmp`
+
+
+			time.Sleep(15*time.Second);
+			exec, err := DockerClient.ContainerExecCreate(context.Background(), "BlazenaStorage", container.ExecOptions{
+				Cmd: []string{"sh", "-c", command},
+				AttachStdout: true,
+				AttachStderr: true,
+				Tty: false,
+			});
+			if err != nil {
+				panic("Failed to create rsync exec!"+err.Error());
+			}
+
+
+			resp, err := DockerClient.ContainerExecAttach(context.Background(), exec.ID, container.ExecStartOptions{});
+			defer resp.Close();
+
+			io.Copy(os.Stdout, resp.Reader)
+
+			fmt.Println("Cleaning Up: " + service.ServiceId);
 			cleanupService(Config, service);
 			fmt.Println("Done!");
-
-
 		}
 	}
 
-
+	time.Sleep(15*time.Second);
 	DockerClient.ContainerRemove(context.Background(), "BlazenaStorage", container.RemoveOptions{
 		Force: true,
 	});
@@ -169,7 +191,7 @@ func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
 		Labels: map[string]string{
 			"blazena.storage": "true",
 		},
-		Cmd: strslice.StrSlice{"sleep", "infinity"},
+		Cmd: strslice.StrSlice{"sleep", "1h"},
 	}, &container.HostConfig{
 		Mounts: []mount.Mount{
 				mount.Mount{
@@ -180,7 +202,7 @@ func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
 				},
 			},
 		//AutoRemove: true,
-		NetworkMode: "blazena",
+		NetworkMode: "blazenaPohar",
 	}, &network.NetworkingConfig{
 		}, &v1.Platform{}, "BlazenaStorage");
 
@@ -193,5 +215,22 @@ func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
 	if err != nil{
 		panic("Failed to start BlazenaStorage container!"+err.Error());
 	}
+
+
+	reader, err := os.Open("./ssh-key.tar");
+
+	if err != nil {
+		panic("Failed To open ssh key file for reading!"+err.Error());
+	}
+
+	defer reader.Close();
+
+	err = DockerClient.CopyToContainer(context.Background(), "BlazenaStorage", "/", reader, container.CopyToContainerOptions{
+		AllowOverwriteDirWithFile: true,
+	});
+	if err != nil {
+		panic("Failed to copy ssh key to container!"+err.Error());
+	}
+
 
 }
