@@ -52,12 +52,11 @@ func Run(Config cfg.Config) {
 			fmt.Println("Done!");
 
 			command := `apk add --no-cache rsync openssh-client && \
-				echo "It Works Under Water!"`;
+				ping -c 10 BlazenaHelper`;
 				//rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=no" \
 				//root@`+Config.Nodes[service.Node].Ip+`:/volume/ /tmp`
 
 
-			time.Sleep(15*time.Second);
 			exec, err := DockerClient.ContainerExecCreate(context.Background(), "BlazenaStorage", container.ExecOptions{
 				Cmd: []string{"sh", "-c", command},
 				AttachStdout: true,
@@ -72,8 +71,9 @@ func Run(Config cfg.Config) {
 			resp, err := DockerClient.ContainerExecAttach(context.Background(), exec.ID, container.ExecStartOptions{});
 			defer resp.Close();
 
-			//io.Copy(os.Stdout, resp.Reader)
+			io.Copy(os.Stdout, resp.Reader)
 
+			time.Sleep(30*time.Second);
 			fmt.Println("Cleaning Up: " + service.ServiceId);
 			cleanupService(Config, service);
 			fmt.Println("Done!");
@@ -83,7 +83,6 @@ func Run(Config cfg.Config) {
 		fmt.Println("Done!");
 	}
 
-	time.Sleep(15*time.Second);
 	DockerClient.ContainerRemove(context.Background(), "BlazenaStorage", container.RemoveOptions{
 		Force: true,
 	});

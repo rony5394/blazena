@@ -45,14 +45,16 @@ func prepare(w http.ResponseWriter, r *http.Request){
 
 	maxConcurrent := uint64(1);
 	totalCompletions := uint64(1);
+	stopGracePeriod := time.Second * 5;
 	targetNode := labels["blazena.node"];
 	helperCommand := `ssh-keygen -t ed25519 -f /host_key && \
 			echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIByYbl8vu946LPycSO5pBohq3vMvvl+wX7snu1Bqpd7p test" > /root/.ssh/authorized_keys && \
-			/usr/sbin/sshd -h /host_key -p 22 -D`;
+			/usr/sbin/sshd -h /host_key -p 2222 -D`;
 
 	
 	_, err = ApiClient.ServiceCreate(context.Background(), swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
+			Name: "BlazenaHelper",
 			Labels: map[string]string{"blazena.helper": "true"},
 		},
 		Mode: swarm.ServiceMode{
@@ -72,20 +74,14 @@ func prepare(w http.ResponseWriter, r *http.Request){
 						Type: "volume",
 					},
 				},
+				StopGracePeriod: &stopGracePeriod,
 			},
 			Placement: &swarm.Placement{
 				Constraints: []string{"node.hostname=="+targetNode},
 			},
-		},
-		EndpointSpec: &swarm.EndpointSpec{
-			Ports: []swarm.PortConfig{
-				swarm.PortConfig{
-					Protocol: swarm.PortConfigProtocolTCP,
-					TargetPort: uint32(22),	
-					PublishedPort: uint32(2222),
-					PublishMode: swarm.PortConfigPublishModeHost,
-				},
-			},
+			Networks: []swarm.NetworkAttachmentConfig{swarm.NetworkAttachmentConfig{
+				Target: "blazenaPohar",
+			}},
 		},
 	}, swarm.ServiceCreateOptions{});
 
@@ -93,7 +89,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		panic("Failed to create helper service."+ err.Error());
 	}
 
-	time.Sleep(15*time.Second);
+	time.Sleep(7*time.Second);
 	fmt.Fprint(w, bodyDecoded.ServiceId);
 }
 

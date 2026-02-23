@@ -57,7 +57,7 @@ func cleanup(w http.ResponseWriter, r *http.Request){
 	if err != nil {
 		panic("Failed to remove helper service."+ err.Error());
 	}
-	time.Sleep(15*time.Second);
+	time.Sleep(7*time.Second);
 
 	fmt.Fprint(w, bodyDecoded.ServiceId);
 }
