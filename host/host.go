@@ -43,6 +43,9 @@ func Run(Config cfg.Config) {
 	services := getServices(Config);
 
 	for _, service := range services {
+		fmt.Println("Scaling Down: "+service.ServiceId)
+		scale(Config, service.ServiceId, false);
+		fmt.Println("Done!");
 		for _, volume := range service.VolumeNames{
 			fmt.Println("Preparing: " + service.ServiceId + " volume: " + volume);
 			if !prepareService(Config, service, volume) {continue}
@@ -69,12 +72,15 @@ func Run(Config cfg.Config) {
 			resp, err := DockerClient.ContainerExecAttach(context.Background(), exec.ID, container.ExecStartOptions{});
 			defer resp.Close();
 
-			io.Copy(os.Stdout, resp.Reader)
+			//io.Copy(os.Stdout, resp.Reader)
 
 			fmt.Println("Cleaning Up: " + service.ServiceId);
 			cleanupService(Config, service);
 			fmt.Println("Done!");
 		}
+		fmt.Println("Scaling up: "+service.ServiceId);
+		scale(Config, service.ServiceId, true);
+		fmt.Println("Done!");
 	}
 
 	time.Sleep(15*time.Second);
@@ -183,6 +189,45 @@ func cleanupService(Config cfg.Config, service aService)bool{
 
 	return true;
 
+}
+
+func scale(Config cfg.Config, serviceId string, up bool)bool{
+	var body struct{
+		ServiceId string `json:"serviceId"`
+	} = struct{ServiceId string "json:\"serviceId\""}{ 
+			ServiceId: serviceId,
+		}
+
+	bodyEncoded, err := json.Marshal(body);
+
+	if err != nil {
+		panic("Failed to marshal body."+ err.Error());
+	}
+
+	uri := "/scale";
+
+	if up {
+		uri += "/up";
+	} else {
+		uri += "/down";
+	}
+
+	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + uri, bytes.NewBuffer(bodyEncoded)); 
+
+	if err != nil{
+		panic("Failed to create http request"+ err.Error());
+	}
+
+	rq.Header.Set("Authorization", "Bearer "+ token);
+	rq.Close = true;
+	rs, err := http.DefaultClient.Do(rq);
+	defer rs.Body.Close();
+
+	if err != nil{
+		panic("Failed to send http request"+ err.Error());
+	}
+
+	return true;
 }
 
 func createStorageContainer(Config cfg.Config, DockerClient *client.Client){

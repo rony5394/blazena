@@ -52,6 +52,8 @@ func Run(){
 	}
 
 	http.HandleFunc("/services", listServices);
+	http.HandleFunc("/scale/up", scaleUp);
+	http.HandleFunc("/scale/down", scaleDown);
 	http.HandleFunc("/prepare", prepare);
 	http.HandleFunc("/cleanup", cleanup);
 

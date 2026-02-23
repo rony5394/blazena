@@ -36,17 +36,12 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		panic("Failed to unmarshal json."+ err.Error());
 	}
 
-	scaleDown(bodyDecoded.ServiceId);
-	//TODO: Add proper wait system
-	time.Sleep(10*time.Second);
-
 	inspectResoults, _, err := ApiClient.ServiceInspectWithRaw(context.Background(), bodyDecoded.ServiceId, swarm.ServiceInspectOptions{});
 	if err != nil{
 		panic("Failed to inspect service."+ err.Error());
 	}
 
 	labels := inspectResoults.Spec.Labels;
-	time.Sleep(10);
 
 	maxConcurrent := uint64(1);
 	totalCompletions := uint64(1);
@@ -98,6 +93,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		panic("Failed to create helper service."+ err.Error());
 	}
 
+	time.Sleep(15*time.Second);
 	fmt.Fprint(w, bodyDecoded.ServiceId);
 }
 
