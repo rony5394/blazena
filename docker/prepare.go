@@ -72,6 +72,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 						Source: bodyDecoded.VolumeId,
 						Target: "/volume",
 						Type: "volume",
+						ReadOnly: true,
 					},
 				},
 				StopGracePeriod: &stopGracePeriod,
@@ -90,6 +91,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 	}
 
 	time.Sleep(7*time.Second);
+
 	fmt.Fprint(w, bodyDecoded.ServiceId);
 }
 

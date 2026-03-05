@@ -30,7 +30,7 @@ type aService struct{
 }
 
 func Run(){
-	ctx, _ := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM);
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM);
 
 	var err error;
 	ApiClient, err = client.NewClientWithOpts(client.FromEnv);
@@ -56,6 +56,13 @@ func Run(){
 	http.HandleFunc("/scale/down", scaleDown);
 	http.HandleFunc("/prepare", prepare);
 	http.HandleFunc("/cleanup", cleanup);
+	// I'll make it better someday.
+	http.HandleFunc("/shutdown", func(w http.ResponseWriter, r *http.Request) {
+		if !bearerAuth(w, r){return}
+		fmt.Fprint(w, "Shutdown!");
+		time.Sleep(1*time.Second);
+		stop();
+	});
 
 	ApiClient.NetworkCreate(context.Background(), "blazenaPohar", network.CreateOptions{
 		Attachable: true,

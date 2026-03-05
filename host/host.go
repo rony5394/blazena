@@ -51,10 +51,10 @@ func Run(Config cfg.Config) {
 			if !prepareService(Config, service, volume) {continue}
 			fmt.Println("Done!");
 
+			// Skiping Host Key Check is temporary.
 			command := `apk add --no-cache rsync openssh-client && \
-				ping -c 10 BlazenaHelper`;
-				//rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=no" \
-				//root@`+Config.Nodes[service.Node].Ip+`:/volume/ /tmp`
+				rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=no" \
+				root@tasks.BlazenaHelper:/volume/ /tmp/` + volume;
 
 
 			exec, err := DockerClient.ContainerExecCreate(context.Background(), "BlazenaStorage", container.ExecOptions{
@@ -86,6 +86,8 @@ func Run(Config cfg.Config) {
 	DockerClient.ContainerRemove(context.Background(), "BlazenaStorage", container.RemoveOptions{
 		Force: true,
 	});
+
+	if !shutdown(Config){panic("Failed to shutdown docker api!");}
 }
 
 func getServices(Config cfg.Config)[]aService{
@@ -276,5 +278,24 @@ func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
 		panic("Failed to copy ssh key to container!"+err.Error());
 	}
 
+
+}
+
+func shutdown(Config cfg.Config)bool{
+	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/shutdown", nil); 
+
+	if err != nil{
+		panic("Failed to create http request"+ err.Error());
+	}
+
+	rq.Header.Set("Authorization", "Bearer "+ token);
+	rq.Close = true;
+	_, err = http.DefaultClient.Do(rq);
+
+	// if err != nil{
+	// 	panic("Failed to send http request"+ err.Error());
+	// }
+
+	return true;
 
 }
