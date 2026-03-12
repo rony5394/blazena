@@ -33,7 +33,7 @@ func main() {
 	mode := os.Args[1];
 	switch mode {
 		case "docker":
-			docker.Run();
+			docker.Run(Config);
 		break;
 		case "host":
 			host.Run(Config);	

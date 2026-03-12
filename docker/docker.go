@@ -16,12 +16,14 @@ import (
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
+	cfg "github.com/rony5394/blazena/config"
 )
 
 // Add mutex.
 var ApiClient *client.Client;
 var scale sync.Map;
 var token string = "12345";
+var theConfig cfg.Config;
 
 type aService struct{
 	ServiceId string `json:"serviceId"`;
@@ -29,7 +31,8 @@ type aService struct{
 	Node string `json:"node"`;
 }
 
-func Run(){
+func Run(Config cfg.Config){
+	theConfig = Config; 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM);
 
 	var err error;

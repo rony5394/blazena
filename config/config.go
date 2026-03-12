@@ -7,4 +7,11 @@ type Config struct {
 	}
 	DockerManagerBaseUrl string
 	LocalBasePath string
+	BlazenaImageUrl string
+	RegistryAuth RegistryAuth
 };
+
+type RegistryAuth struct {
+	Username string
+	Password string
+}

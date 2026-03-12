@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"encoding/base64"
 	"time"
+	"os"
 
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
+	"github.com/docker/docker/api/types/registry"
+	"github.com/docker/docker/api/types/image"
 )
 
 func prepare(w http.ResponseWriter, r *http.Request){
@@ -41,6 +45,27 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		panic("Failed to inspect service."+ err.Error());
 	}
 
+	authConfig := registry.AuthConfig{
+		Username: theConfig.RegistryAuth.Username, 
+		Password: theConfig.RegistryAuth.Password,
+	}
+
+	authJSON, err := json.Marshal(authConfig)
+	if err != nil {
+		panic("Failed to marshal auth config!"+ err.Error());
+	}
+
+	authString := base64.URLEncoding.EncodeToString(authJSON);
+
+	ipc, err := ApiClient.ImagePull(context.Background(), theConfig.BlazenaImageUrl, image.PullOptions{RegistryAuth: authString});
+	if err != nil {
+		panic("Failed to pull blazena image!"+ err.Error());
+	}
+	defer ipc.Close();
+
+	io.Copy(os.Stdout, ipc);
+
+
 	labels := inspectResoults.Spec.Labels;
 
 	maxConcurrent := uint64(1);
@@ -65,7 +90,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		},
 		TaskTemplate: swarm.TaskSpec{
 			ContainerSpec: &swarm.ContainerSpec{
-				Image: "registry.lan.ronycloud.dev/blazena/helper:latest",
+				Image: theConfig.BlazenaImageUrl, 
 				Command: []string{"sh", "-c", helperCommand},
 				Mounts: []mount.Mount{
 					mount.Mount{

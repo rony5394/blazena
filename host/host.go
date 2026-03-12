@@ -7,13 +7,16 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"encoding/base64"
 	"os"
 	"time"
 
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/strslice"
+	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/client"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	cfg "github.com/rony5394/blazena/config"
@@ -52,8 +55,7 @@ func Run(Config cfg.Config) {
 			fmt.Println("Done!");
 
 			// Skiping Host Key Check is temporary.
-			command := `apk add --no-cache rsync openssh-client && \
-				rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=no" \
+			command := `rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=no" \
 				root@tasks.BlazenaHelper:/volume/ /tmp/` + volume;
 
 
@@ -232,12 +234,32 @@ func scale(Config cfg.Config, serviceId string, up bool)bool{
 }
 
 func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
+	authConfig := registry.AuthConfig{
+		Username: Config.RegistryAuth.Username, 
+		Password: Config.RegistryAuth.Password,
+	}
+
+	authJSON, err := json.Marshal(authConfig)
+	if err != nil {
+		panic("Failed to marshal auth config!"+ err.Error());
+	}
+
+	authString := base64.URLEncoding.EncodeToString(authJSON);
+
+	ipc, err := DockerClient.ImagePull(context.Background(), Config.BlazenaImageUrl, image.PullOptions{RegistryAuth: authString});
+	if err != nil {
+		panic("Failed to pull blazena image!"+ err.Error());
+	}
+	defer ipc.Close();
+
+	io.Copy(os.Stdout, ipc);
+
 	cr, err := DockerClient.ContainerCreate(context.Background(), &container.Config{
-		Image: "docker.io/library/alpine:3.3",
+		Image: Config.BlazenaImageUrl, 
 		Labels: map[string]string{
 			"blazena.storage": "true",
 		},
-		Cmd: strslice.StrSlice{"sleep", "1h"},
+		Cmd: strslice.StrSlice{"sleep", "3h"},
 	}, &container.HostConfig{
 		Mounts: []mount.Mount{
 				mount.Mount{

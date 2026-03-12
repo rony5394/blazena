@@ -12,9 +12,12 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /blazena
 
 
 FROM docker.io/library/alpine:3.3
+RUN apk add openssh rsync --no-cache
 
 COPY --from=builder /blazena /
 EXPOSE 1234 
 ENV MODE=invalid
 
-CMD /blazena $MODE
+WORKDIR /root/.ssh
+
+CMD ["/blazena", "$MODE"]
