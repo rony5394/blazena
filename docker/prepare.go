@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/api/types/image"
+	"github.com/docker/docker/client"
 )
 
 func prepare(w http.ResponseWriter, r *http.Request){
@@ -44,6 +45,45 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		panic("Failed to inspect service."+ err.Error());
 	}
 
+
+	labels := inspectResoults.Spec.Labels;
+
+	pullBlazenaImage();
+	createHelper(labels["blazena.node"], bodyDecoded.VolumeId);
+
+	time.Sleep(7*time.Second);
+
+	fmt.Fprint(w, bodyDecoded.ServiceId);
+}
+
+func contains(slice []string, str string) bool {
+    for _, s := range slice {
+        if s == str {
+            return true
+        }
+    }
+    return false
+}
+
+//By gpt (I'm lazy)
+func getConfigIDByName(cli *client.Client, name string) (string, error) {
+	ctx := context.Background()
+
+	configs, err := cli.ConfigList(ctx, swarm.ConfigListOptions{}) 
+	if err != nil {
+		return "", err
+	}
+
+	for _, cfg := range configs {
+		if cfg.Spec.Name == name {
+			return cfg.ID, nil
+		}
+	}
+
+	return "", fmt.Errorf("config not found: %s", name)
+}
+
+func pullBlazenaImage(){
 	authConfig := registry.AuthConfig{
 		Username: theConfig.RegistryAuth.Username, 
 		Password: theConfig.RegistryAuth.Password,
@@ -63,19 +103,20 @@ func prepare(w http.ResponseWriter, r *http.Request){
 	defer ipc.Close();
 
 	io.Copy(io.Discard, ipc);
+}
 
-
-	labels := inspectResoults.Spec.Labels;
-
+func createHelper(targetNode string, targetVolume string){
 	maxConcurrent := uint64(1);
 	totalCompletions := uint64(1);
 	stopGracePeriod := time.Second * 5;
-	targetNode := labels["blazena.node"];
 	helperCommand := `ssh-keygen -t ed25519 -f /host_key && \
-			echo "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIByYbl8vu946LPycSO5pBohq3vMvvl+wX7snu1Bqpd7p test" > /root/.ssh/authorized_keys && \
 			/usr/sbin/sshd -h /host_key -p 2222 -D`;
 
-	
+	sshKeyConfigId, err := getConfigIDByName(ApiClient, "blazenaSSHPublicKey");
+
+	if err != nil {
+		panic("Docker needs both id and name to mount config for some reason and getting id of it failed!"+err.Error());
+	}
 	_, err = ApiClient.ServiceCreate(context.Background(), swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
 			Name: "BlazenaHelper",
@@ -93,13 +134,25 @@ func prepare(w http.ResponseWriter, r *http.Request){
 				Command: []string{"sh", "-c", helperCommand},
 				Mounts: []mount.Mount{
 					mount.Mount{
-						Source: bodyDecoded.VolumeId,
+						Source: targetVolume, 
 						Target: "/volume",
 						Type: "volume",
 						ReadOnly: true,
 					},
 				},
 				StopGracePeriod: &stopGracePeriod,
+				Configs: []*swarm.ConfigReference{
+					&swarm.ConfigReference{
+						ConfigID: sshKeyConfigId, 
+						ConfigName: "blazenaSSHPublicKey",
+						File: &swarm.ConfigReferenceFileTarget{
+							Name: "/root/.ssh/authorized_keys",
+							Mode: 0600,
+							UID: "0",
+							GID: "0",
+						},
+					},
+				},
 			},
 			Placement: &swarm.Placement{
 				Constraints: []string{"node.hostname=="+targetNode},
@@ -114,17 +167,4 @@ func prepare(w http.ResponseWriter, r *http.Request){
 		panic("Failed to create helper service."+ err.Error());
 	}
 
-	time.Sleep(7*time.Second);
-
-	fmt.Fprint(w, bodyDecoded.ServiceId);
 }
-
-func contains(slice []string, str string) bool {
-    for _, s := range slice {
-        if s == str {
-            return true
-        }
-    }
-    return false
-}
-

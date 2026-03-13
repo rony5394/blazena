@@ -50,6 +50,12 @@ func Run(Config cfg.Config){
 		panic("Node is not a swarm manager.");
 	}
 
+	sshKeypair := generateKeypair();
+	ApiClient.ConfigCreate(context.Background(), swarm.ConfigSpec{
+		Data: sshKeypair.public,
+		Annotations: swarm.Annotations{Name: "blazenaSSHPublicKey"},
+	});
+
 	server := &http.Server{
 		Addr: ":1234",
 	}
@@ -88,13 +94,15 @@ func Run(Config cfg.Config){
 
 	}();
 
-	fmt.Println("Api started!");
+	fmt.Println("Api has been started!");
 
 	time.Sleep(10*time.Millisecond);
 	<-ctx.Done();
 	fmt.Println("Stopping http server.");
 	server.Close();
+
 	ApiClient.NetworkRemove(context.Background(), "blazenaPohar");
+	ApiClient.ConfigRemove(context.Background(), "blazenaSSHPublicKey")
 	fmt.Println("Exiting!");
 }
 
@@ -126,13 +134,12 @@ func listServices(w http.ResponseWriter, r *http.Request){
 
 	var services []aService;
 
-	for _, service:= range list{
+	for _, service := range list{
 		var settings map[string]string = service.Spec.Labels; 
 		
 
 		if(settings["blazena.enable"] != "true"){
 			continue;
-
 		}
 
 		targetVolumes := strings.Split(settings["blazena.volumes"], ",");
