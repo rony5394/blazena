@@ -88,6 +88,8 @@ func Run(Config cfg.Config){
 
 	}();
 
+	fmt.Println("Api started!");
+
 	time.Sleep(10*time.Millisecond);
 	<-ctx.Done();
 	fmt.Println("Stopping http server.");

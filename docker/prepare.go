@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"encoding/base64"
 	"time"
-	"os"
 
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/swarm"
@@ -63,7 +62,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 	}
 	defer ipc.Close();
 
-	io.Copy(os.Stdout, ipc);
+	io.Copy(io.Discard, ipc);
 
 
 	labels := inspectResoults.Spec.Labels;

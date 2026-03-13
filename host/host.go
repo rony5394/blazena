@@ -252,7 +252,7 @@ func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
 	}
 	defer ipc.Close();
 
-	io.Copy(os.Stdout, ipc);
+	io.Copy(io.Discard, ipc);
 
 	cr, err := DockerClient.ContainerCreate(context.Background(), &container.Config{
 		Image: Config.BlazenaImageUrl, 
