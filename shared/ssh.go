@@ -1,34 +1,30 @@
-package docker 
+package shared 
 
 import (
 	"crypto/ed25519"
 	"crypto/rand"
-	"crypto/x509"
 	"encoding/pem"
 
 	"golang.org/x/crypto/ssh"
 )
 
 type Keypair struct {
-	public []byte
-	private []byte
+	Public string 
+	Private string 
 }
 
-func generateKeypair() Keypair {
+func GenerateSSHKeypair() Keypair {
 	publicKey, privateKey, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		panic(err)
 	}
 
-	privBytes, err := x509.MarshalPKCS8PrivateKey(privateKey)
+	privBlock, err := ssh.MarshalPrivateKey(privateKey, "")
 	if err != nil {
 		panic(err)
 	}
 
-	privPem := pem.EncodeToMemory(&pem.Block{
-		Type:  "PRIVATE KEY",
-		Bytes: privBytes,
-	})
+	privPem := pem.EncodeToMemory(privBlock)
 
 	sshPubKey, err := ssh.NewPublicKey(publicKey)
 	if err != nil {
@@ -38,8 +34,7 @@ func generateKeypair() Keypair {
 	pubBytes := ssh.MarshalAuthorizedKey(sshPubKey)
 
 	return Keypair{
-		private: privPem,
-		public: pubBytes,
-	};
-
+		Private: string(privPem),
+		Public:  string(pubBytes),
+	}
 }

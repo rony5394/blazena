@@ -50,12 +50,6 @@ func Run(Config cfg.Config){
 		panic("Node is not a swarm manager.");
 	}
 
-	sshKeypair := generateKeypair();
-	ApiClient.ConfigCreate(context.Background(), swarm.ConfigSpec{
-		Data: sshKeypair.public,
-		Annotations: swarm.Annotations{Name: "blazenaSSHPublicKey"},
-	});
-
 	server := &http.Server{
 		Addr: ":1234",
 	}
@@ -65,6 +59,7 @@ func Run(Config cfg.Config){
 	http.HandleFunc("/scale/down", scaleDown);
 	http.HandleFunc("/prepare", prepare);
 	http.HandleFunc("/cleanup", cleanup);
+	http.HandleFunc("/keys", exchangeKeys);
 	// I'll make it better someday.
 	http.HandleFunc("/shutdown", func(w http.ResponseWriter, r *http.Request) {
 		if !bearerAuth(w, r){return}
@@ -103,6 +98,8 @@ func Run(Config cfg.Config){
 
 	ApiClient.NetworkRemove(context.Background(), "blazenaPohar");
 	ApiClient.ConfigRemove(context.Background(), "blazenaSSHPublicKey")
+	ApiClient.SecretRemove(context.Background(), "blazenaSSHHostPrivateKey");
+
 	fmt.Println("Exiting!");
 }
 

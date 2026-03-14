@@ -1,13 +1,14 @@
 package host
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"encoding/base64"
 	"os"
 	"time"
 
@@ -15,11 +16,12 @@ import (
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/api/types/registry"
+	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/client"
 	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	cfg "github.com/rony5394/blazena/config"
+	"github.com/rony5394/blazena/shared"
 )
 
 var token string = "12345";
@@ -41,7 +43,9 @@ func Run(Config cfg.Config) {
 		panic("Failed to ping DockerClient.");
 	}
 
-	createStorageContainer(Config, DockerClient);
+	sshKeyPair := shared.GenerateSSHKeypair();
+	sshHostPkPem := exchangeKeys(Config, string(sshKeyPair.Public));
+	createStorageContainer(Config, DockerClient, sshKeyPair.Private, sshHostPkPem);
 
 	services := getServices(Config);
 
@@ -55,9 +59,8 @@ func Run(Config cfg.Config) {
 			fmt.Println("Done!");
 
 			// Skiping Host Key Check is temporary.
-			command := `rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=no" \
+			command := `rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/expected-host-key" \
 				root@tasks.BlazenaHelper:/volume/ /tmp/` + volume;
-
 
 			exec, err := DockerClient.ContainerExecCreate(context.Background(), "BlazenaStorage", container.ExecOptions{
 				Cmd: []string{"sh", "-c", command},
@@ -233,7 +236,7 @@ func scale(Config cfg.Config, serviceId string, up bool)bool{
 	return true;
 }
 
-func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
+func createStorageContainer(Config cfg.Config, DockerClient *client.Client, sshSkPem string, sshHostPkPem string){
 	authConfig := registry.AuthConfig{
 		Username: Config.RegistryAuth.Username, 
 		Password: Config.RegistryAuth.Password,
@@ -285,15 +288,17 @@ func createStorageContainer(Config cfg.Config, DockerClient *client.Client){
 	}
 
 
-	reader, err := os.Open("./ssh-key.tar");
+	var buf bytes.Buffer;
+	tw := tar.NewWriter(&buf);
 
-	if err != nil {
-		panic("Failed To open ssh key file for reading!"+err.Error());
-	}
+	addToTar(tw, "ssh-key", sshSkPem);
+	addToTar(tw, "expected-host-key", "[tasks.BlazenaHelper]:2222 "+ sshHostPkPem);
+	tw.Close();
+	if err != nil {panic("The british are comming!")}
 
-	defer reader.Close();
-
-	err = DockerClient.CopyToContainer(context.Background(), "BlazenaStorage", "/", reader, container.CopyToContainerOptions{
+	os.WriteFile("/tmp/test", buf.Bytes(), os.ModeAppend);
+	
+	err = DockerClient.CopyToContainer(context.Background(), "BlazenaStorage", "/", &buf, container.CopyToContainerOptions{
 		AllowOverwriteDirWithFile: true,
 	});
 	if err != nil {
@@ -320,4 +325,68 @@ func shutdown(Config cfg.Config)bool{
 
 	return true;
 
+}
+
+func exchangeKeys(Config cfg.Config, sshKeyPem string)string{
+	var body struct{
+		SshPkPem string `json:"sshPkPem"` 
+	} = struct{SshPkPem string `json:"sshPkPem"`}{
+		SshPkPem: sshKeyPem,
+	};
+
+	bodyEncoded, err := json.Marshal(body);
+
+	if err != nil {
+		panic("Failed to marshal body."+ err.Error());
+	}
+
+	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/keys", bytes.NewBuffer(bodyEncoded)); 
+
+	if err != nil{
+		panic("Failed to create http request"+ err.Error());
+	}
+
+	rq.Header.Set("Authorization", "Bearer "+ token);
+	rq.Close = true;
+	rs, err := http.DefaultClient.Do(rq);
+
+	if err != nil{
+		panic("Failed to send http request"+ err.Error());
+	}
+
+	defer rs.Body.Close();
+
+	rsBodyRaw, err := io.ReadAll(rs.Body);
+
+	if err != nil{
+		panic("Failed to read response's body!"+err.Error());
+	}
+
+	var rsBody struct{
+		HostPkPem string `json:"hostPkPem"` 
+	};
+
+	err = json.Unmarshal(rsBodyRaw, &rsBody);
+	if err != nil{
+		panic("Failed to unmarshal rsBodyRaw!"+ err.Error());
+	}
+
+
+	return rsBody.HostPkPem;
+}
+
+func addToTar(tw *tar.Writer, filename string, content string) error{
+	hdr := &tar.Header{
+		Name: filename,
+		Mode: 0600,
+		Size: int64(len([]byte(content))),
+	};
+
+	if err := tw.WriteHeader(hdr); err != nil{
+		return err;
+	}
+
+	_, err := tw.Write([]byte(content))
+
+	return err;
 }

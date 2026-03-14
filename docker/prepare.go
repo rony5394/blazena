@@ -65,7 +65,6 @@ func contains(slice []string, str string) bool {
     return false
 }
 
-//By gpt (I'm lazy)
 func getConfigIDByName(cli *client.Client, name string) (string, error) {
 	ctx := context.Background()
 
@@ -77,6 +76,23 @@ func getConfigIDByName(cli *client.Client, name string) (string, error) {
 	for _, cfg := range configs {
 		if cfg.Spec.Name == name {
 			return cfg.ID, nil
+		}
+	}
+
+	return "", fmt.Errorf("config not found: %s", name)
+}
+
+func getSecretIDByName(cli *client.Client, name string) (string, error) {
+	ctx := context.Background()
+
+	secrets, err := cli.SecretList(ctx, swarm.SecretListOptions{}) 
+	if err != nil {
+		return "", err
+	}
+
+	for _, sec := range secrets {
+		if sec.Spec.Name == name {
+			return sec.ID, nil
 		}
 	}
 
@@ -109,14 +125,15 @@ func createHelper(targetNode string, targetVolume string){
 	maxConcurrent := uint64(1);
 	totalCompletions := uint64(1);
 	stopGracePeriod := time.Second * 5;
-	helperCommand := `ssh-keygen -t ed25519 -f /host_key && \
-			/usr/sbin/sshd -h /host_key -p 2222 -D`;
+	helperCommand := `/usr/sbin/sshd -h /host-key -p 2222 -D`;
 
 	sshKeyConfigId, err := getConfigIDByName(ApiClient, "blazenaSSHPublicKey");
 
 	if err != nil {
 		panic("Docker needs both id and name to mount config for some reason and getting id of it failed!"+err.Error());
 	}
+
+	sshHostKeySecretId, err := getSecretIDByName(ApiClient, "blazenaSSHHostPrivateKey")
 	_, err = ApiClient.ServiceCreate(context.Background(), swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
 			Name: "BlazenaHelper",
@@ -147,6 +164,18 @@ func createHelper(targetNode string, targetVolume string){
 						ConfigName: "blazenaSSHPublicKey",
 						File: &swarm.ConfigReferenceFileTarget{
 							Name: "/root/.ssh/authorized_keys",
+							Mode: 0600,
+							UID: "0",
+							GID: "0",
+						},
+					},
+				},
+				Secrets: []*swarm.SecretReference{
+					&swarm.SecretReference{
+						SecretID: sshHostKeySecretId,
+						SecretName: "blazenaSSHHostPrivateKey",
+						File: &swarm.SecretReferenceFileTarget{
+							Name: "/host-key",
 							Mode: 0600,
 							UID: "0",
 							GID: "0",
