@@ -4,7 +4,6 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,13 +12,7 @@ import (
 	"time"
 
 	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/api/types/mount"
-	"github.com/docker/docker/api/types/network"
-	"github.com/docker/docker/api/types/registry"
-	"github.com/docker/docker/api/types/strslice"
 	"github.com/docker/docker/client"
-	v1 "github.com/opencontainers/image-spec/specs-go/v1"
 	cfg "github.com/rony5394/blazena/config"
 	"github.com/rony5394/blazena/shared"
 )
@@ -60,9 +53,9 @@ func Run(Config cfg.Config) {
 
 			// Skiping Host Key Check is temporary.
 			command := `rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/expected-host-key" \
-				root@tasks.BlazenaHelper:/volume/ /tmp/` + volume;
+				root@tasks.`+ Config.Constants.HelperServiceName +`:/volume/ /tmp/` + volume;
 
-			exec, err := DockerClient.ContainerExecCreate(context.Background(), "BlazenaStorage", container.ExecOptions{
+			exec, err := DockerClient.ContainerExecCreate(context.Background(), Config.Constants.StorageContainerName, container.ExecOptions{
 				Cmd: []string{"sh", "-c", command},
 				AttachStdout: true,
 				AttachStderr: true,
@@ -88,7 +81,7 @@ func Run(Config cfg.Config) {
 		fmt.Println("Done!");
 	}
 
-	DockerClient.ContainerRemove(context.Background(), "BlazenaStorage", container.RemoveOptions{
+	DockerClient.ContainerRemove(context.Background(), Config.Constants.StorageContainerName, container.RemoveOptions{
 		Force: true,
 	});
 
@@ -117,45 +110,6 @@ func getServices(Config cfg.Config)[]aService{
 		panic("Failed to unmarshal response.");
 	}
 	return services;
-}
-
-func prepareService(Config cfg.Config, service aService, targetVolume string) bool{
-	_, ok := Config.Nodes[service.Node];
-	if !ok {
-		fmt.Println("Node", service.Node, "refferenced in", service.ServiceId ,"service does not exists!");
-		return false;
-	}
-	
-	var body struct{
-		ServiceId string `json:"serviceId"`
-		VolumeId string `json:"volumeId"`
-	} = struct{ServiceId string "json:\"serviceId\""; VolumeId string "json:\"volumeId\""}{
-			ServiceId: service.ServiceId,
-			VolumeId: targetVolume,
-		}
-
-	bodyEncoded, err := json.Marshal(body);
-
-	if err != nil {
-		panic("Failed to marshal body."+ err.Error());
-	}
-
-	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/prepare", bytes.NewBuffer(bodyEncoded)); 
-
-	if err != nil{
-		panic("Failed to create http request"+ err.Error());
-	}
-
-	rq.Header.Set("Authorization", "Bearer "+ token);
-	rq.Close = true;
-	rs, err := http.DefaultClient.Do(rq);
-	defer rs.Body.Close();
-
-	if err != nil{
-		panic("Failed to send http request"+ err.Error());
-	}
-
-	return true;
 }
 
 func cleanupService(Config cfg.Config, service aService)bool{
@@ -197,117 +151,6 @@ func cleanupService(Config cfg.Config, service aService)bool{
 
 }
 
-func scale(Config cfg.Config, serviceId string, up bool)bool{
-	var body struct{
-		ServiceId string `json:"serviceId"`
-	} = struct{ServiceId string "json:\"serviceId\""}{ 
-			ServiceId: serviceId,
-		}
-
-	bodyEncoded, err := json.Marshal(body);
-
-	if err != nil {
-		panic("Failed to marshal body."+ err.Error());
-	}
-
-	uri := "/scale";
-
-	if up {
-		uri += "/up";
-	} else {
-		uri += "/down";
-	}
-
-	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + uri, bytes.NewBuffer(bodyEncoded)); 
-
-	if err != nil{
-		panic("Failed to create http request"+ err.Error());
-	}
-
-	rq.Header.Set("Authorization", "Bearer "+ token);
-	rq.Close = true;
-	rs, err := http.DefaultClient.Do(rq);
-	defer rs.Body.Close();
-
-	if err != nil{
-		panic("Failed to send http request"+ err.Error());
-	}
-
-	return true;
-}
-
-func createStorageContainer(Config cfg.Config, DockerClient *client.Client, sshSkPem string, sshHostPkPem string){
-	authConfig := registry.AuthConfig{
-		Username: Config.RegistryAuth.Username, 
-		Password: Config.RegistryAuth.Password,
-	}
-
-	authJSON, err := json.Marshal(authConfig)
-	if err != nil {
-		panic("Failed to marshal auth config!"+ err.Error());
-	}
-
-	authString := base64.URLEncoding.EncodeToString(authJSON);
-
-	ipc, err := DockerClient.ImagePull(context.Background(), Config.BlazenaImageUrl, image.PullOptions{RegistryAuth: authString});
-	if err != nil {
-		panic("Failed to pull blazena image!"+ err.Error());
-	}
-	defer ipc.Close();
-
-	io.Copy(io.Discard, ipc);
-
-	cr, err := DockerClient.ContainerCreate(context.Background(), &container.Config{
-		Image: Config.BlazenaImageUrl, 
-		Labels: map[string]string{
-			"blazena.storage": "true",
-		},
-		Cmd: strslice.StrSlice{"sleep", "3h"},
-	}, &container.HostConfig{
-		Mounts: []mount.Mount{
-				mount.Mount{
-					Type: mount.TypeBind,
-					Source: Config.LocalBasePath,
-					Target: "/volume",
-					ReadOnly: true,
-				},
-			},
-		//AutoRemove: true,
-		NetworkMode: "blazenaPohar",
-	}, &network.NetworkingConfig{
-		}, &v1.Platform{}, "BlazenaStorage");
-
-	if err != nil {
-		panic("Failed to create BlazenaStorage container!"+err.Error());
-	}
-
-	err = DockerClient.ContainerStart(context.Background(), cr.ID, container.StartOptions{}); 
-	
-	if err != nil{
-		panic("Failed to start BlazenaStorage container!"+err.Error());
-	}
-
-
-	var buf bytes.Buffer;
-	tw := tar.NewWriter(&buf);
-
-	addToTar(tw, "ssh-key", sshSkPem);
-	addToTar(tw, "expected-host-key", "[tasks.BlazenaHelper]:2222 "+ sshHostPkPem);
-	tw.Close();
-	if err != nil {panic("The british are comming!")}
-
-	os.WriteFile("/tmp/test", buf.Bytes(), os.ModeAppend);
-	
-	err = DockerClient.CopyToContainer(context.Background(), "BlazenaStorage", "/", &buf, container.CopyToContainerOptions{
-		AllowOverwriteDirWithFile: true,
-	});
-	if err != nil {
-		panic("Failed to copy ssh key to container!"+err.Error());
-	}
-
-
-}
-
 func shutdown(Config cfg.Config)bool{
 	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/shutdown", nil); 
 
@@ -325,54 +168,6 @@ func shutdown(Config cfg.Config)bool{
 
 	return true;
 
-}
-
-func exchangeKeys(Config cfg.Config, sshKeyPem string)string{
-	var body struct{
-		SshPkPem string `json:"sshPkPem"` 
-	} = struct{SshPkPem string `json:"sshPkPem"`}{
-		SshPkPem: sshKeyPem,
-	};
-
-	bodyEncoded, err := json.Marshal(body);
-
-	if err != nil {
-		panic("Failed to marshal body."+ err.Error());
-	}
-
-	rq, err := http.NewRequest("POST", Config.DockerManagerBaseUrl + "/keys", bytes.NewBuffer(bodyEncoded)); 
-
-	if err != nil{
-		panic("Failed to create http request"+ err.Error());
-	}
-
-	rq.Header.Set("Authorization", "Bearer "+ token);
-	rq.Close = true;
-	rs, err := http.DefaultClient.Do(rq);
-
-	if err != nil{
-		panic("Failed to send http request"+ err.Error());
-	}
-
-	defer rs.Body.Close();
-
-	rsBodyRaw, err := io.ReadAll(rs.Body);
-
-	if err != nil{
-		panic("Failed to read response's body!"+err.Error());
-	}
-
-	var rsBody struct{
-		HostPkPem string `json:"hostPkPem"` 
-	};
-
-	err = json.Unmarshal(rsBodyRaw, &rsBody);
-	if err != nil{
-		panic("Failed to unmarshal rsBodyRaw!"+ err.Error());
-	}
-
-
-	return rsBody.HostPkPem;
 }
 
 func addToTar(tw *tar.Writer, filename string, content string) error{

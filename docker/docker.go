@@ -68,7 +68,7 @@ func Run(Config cfg.Config){
 		stop();
 	});
 
-	ApiClient.NetworkCreate(context.Background(), "blazenaPohar", network.CreateOptions{
+	ApiClient.NetworkCreate(context.Background(), theConfig.Constants.OverlayNetworkName, network.CreateOptions{
 		Attachable: true,
 		// Internal: true,
 		Driver: "overlay",
@@ -96,7 +96,7 @@ func Run(Config cfg.Config){
 	fmt.Println("Stopping http server.");
 	server.Close();
 
-	ApiClient.NetworkRemove(context.Background(), "blazenaPohar");
+	ApiClient.NetworkRemove(context.Background(), theConfig.Constants.OverlayNetworkName);
 	ApiClient.ConfigRemove(context.Background(), "blazenaSSHPublicKey")
 	ApiClient.SecretRemove(context.Background(), "blazenaSSHHostPrivateKey");
 

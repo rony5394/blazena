@@ -14,6 +14,8 @@ import (
 	"github.com/docker/docker/api/types/registry"
 	"github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
+
+	cfg "github.com/rony5394/blazena/config"
 )
 
 func prepare(w http.ResponseWriter, r *http.Request){
@@ -49,7 +51,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 	labels := inspectResoults.Spec.Labels;
 
 	pullBlazenaImage();
-	createHelper(labels["blazena.node"], bodyDecoded.VolumeId);
+	createHelper(theConfig, labels["blazena.node"], bodyDecoded.VolumeId);
 
 	time.Sleep(7*time.Second);
 
@@ -121,7 +123,7 @@ func pullBlazenaImage(){
 	io.Copy(io.Discard, ipc);
 }
 
-func createHelper(targetNode string, targetVolume string){
+func createHelper(Config cfg.Config, targetNode string, targetVolume string){
 	maxConcurrent := uint64(1);
 	totalCompletions := uint64(1);
 	stopGracePeriod := time.Second * 5;
@@ -136,7 +138,7 @@ func createHelper(targetNode string, targetVolume string){
 	sshHostKeySecretId, err := getSecretIDByName(ApiClient, "blazenaSSHHostPrivateKey")
 	_, err = ApiClient.ServiceCreate(context.Background(), swarm.ServiceSpec{
 		Annotations: swarm.Annotations{
-			Name: "BlazenaHelper",
+			Name: Config.Constants.HelperServiceName, 
 			Labels: map[string]string{"blazena.helper": "true"},
 		},
 		Mode: swarm.ServiceMode{
@@ -187,7 +189,7 @@ func createHelper(targetNode string, targetVolume string){
 				Constraints: []string{"node.hostname=="+targetNode},
 			},
 			Networks: []swarm.NetworkAttachmentConfig{swarm.NetworkAttachmentConfig{
-				Target: "blazenaPohar",
+				Target: Config.Constants.OverlayNetworkName,
 			}},
 		},
 	}, swarm.ServiceCreateOptions{});
