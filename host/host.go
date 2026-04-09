@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -51,9 +52,10 @@ func Run(Config cfg.Config) {
 			if !prepareService(Config, service, volume) {continue}
 			fmt.Println("Done!");
 
-			// Skiping Host Key Check is temporary.
+			storagePath, _ := generateStoragePath(Config, service.Node, volume, DockerClient);
+			fmt.Println(storagePath);
 			command := `rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/expected-host-key" \
-				root@tasks.`+ Config.Constants.HelperServiceName +`:/volume/ /tmp/` + volume;
+				root@tasks.`+ Config.Constants.HelperServiceName +`:/volume/ ` +storagePath;
 
 			exec, err := DockerClient.ContainerExecCreate(context.Background(), Config.Constants.StorageContainerName, container.ExecOptions{
 				Cmd: []string{"sh", "-c", command},
@@ -184,4 +186,96 @@ func addToTar(tw *tar.Writer, filename string, content string) error{
 	_, err := tw.Write([]byte(content))
 
 	return err;
+}
+
+func createIfMissing(targetPath string, DockerClient *client.Client, cfg cfg.Config) error{
+	const cmd = `#!/bin/sh
+	set -e
+
+	TARGET_PATH=$1
+
+	# Remove trailing slash
+	TARGET_PATH=${TARGET_PATH%/}
+
+	CURRENT=""
+
+	case "$TARGET_PATH" in
+	    /*) CURRENT="/" ;;
+	esac
+
+	OLD_IFS=$IFS
+	IFS='/'
+
+	for PART in $TARGET_PATH; do
+	    [ -z "$PART" ] && continue
+
+	    if [ "$CURRENT" = "/" ]; then
+		NEXT="${CURRENT}${PART}"
+	    else
+		NEXT="${CURRENT}/${PART}"
+	    fi
+
+	    if [ ! -e "$NEXT" ]; then
+		case "$PART" in
+		    @*)
+			echo "Creating Btrfs subvolume: $NEXT"
+			btrfs subvolume create "$NEXT"
+			;;
+		    *)
+			echo "Creating directory: $NEXT"
+			mkdir "$NEXT"
+			;;
+		esac
+	    else
+		echo "Already exists: $NEXT"
+	    fi
+
+	    CURRENT="$NEXT"
+	done
+
+	IFS=$OLD_IFS`;
+
+	exec, err := DockerClient.ContainerExecCreate(context.Background(), cfg.Constants.StorageContainerName, container.ExecOptions{
+		Cmd: []string{"sh", "-c", cmd, "_", targetPath},
+		AttachStdout: true,
+		AttachStderr: true,
+		Tty: false,
+	});
+
+	if err != nil {
+		panic("Failed to create execute!"+err.Error());
+	}
+
+	resp, err := DockerClient.ContainerExecAttach(context.Background(), exec.ID, container.ExecStartOptions{});
+	defer resp.Close();
+
+	if err != nil {
+		panic("Failed to atach to exec!"+err.Error());
+	}
+
+	inspect, err := DockerClient.ContainerExecInspect(context.Background(), exec.ID);
+
+	if(inspect.ExitCode != 0){
+		fmt.Println("<resp>");
+		io.Copy(os.Stdout, resp.Reader);
+		fmt.Println("</resp>");
+		return errors.New("Execution did return non zero code!"); 
+	}
+
+	return nil;
+}
+
+func generateStoragePath(cfg cfg.Config, node string, volumeId string, DockerClient *client.Client) (string, error){
+	var path string;
+	path += "/volume";
+
+	path += "/@"+ node +"/@"+ volumeId;
+
+	err := createIfMissing(path, DockerClient, cfg);
+
+	if err != nil {
+		return "", err;
+	}
+
+	return path, nil;
 }

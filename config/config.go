@@ -29,7 +29,7 @@ type RegistryAuth struct {
 func GetConfig() Config {
 	var cfg Config;
 
-	rawConfig, err := os.ReadFile("./config.json");
+	rawConfig, err := os.ReadFile("/config.json");
 	if err != nil{
 		panic("Failed it load config file." + err.Error());
 	}

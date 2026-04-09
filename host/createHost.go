@@ -52,7 +52,6 @@ func createStorageContainer(Config cfg.Config, DockerClient *client.Client, sshS
 					Type: mount.TypeBind,
 					Source: Config.LocalBasePath,
 					Target: "/volume",
-					ReadOnly: true,
 				},
 			},
 		//AutoRemove: true,
