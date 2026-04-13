@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
 	"time"
@@ -44,18 +45,24 @@ func Run(Config cfg.Config) {
 	services := getServices(Config);
 
 	for _, service := range services {
-		fmt.Println("Scaling Down: "+service.ServiceId)
-		scale(Config, service.ServiceId, false);
-		fmt.Println("Done!");
-		for _, volume := range service.VolumeNames{
-			fmt.Println("Preparing: " + service.ServiceId + " volume: " + volume);
-			if !prepareService(Config, service, volume) {continue}
-			fmt.Println("Done!");
 
-			storagePath, _ := generateStoragePath(Config, service.Node, volume, DockerClient);
-			fmt.Println(storagePath);
+		slog.Info("Scaling Down", slog.String("serviceId", service.ServiceId));
+		scale(Config, service.ServiceId, false);
+		slog.Info("Done");
+
+		for _, volume := range service.VolumeNames{
+			slog.Info("Preparing", slog.String("serviceId", service.ServiceId), slog.String("volumeId", volume));
+			if !prepareService(Config, service, volume) {continue}
+			slog.Info("Done");
+
+			targetStoragePath, _ := generateStoragePath(Config, service.Node, volume, DockerClient);
+			sourceStoragePath := "root@tasks."+ Config.Constants.HelperServiceName +":/volume";
+
+			slog.Debug("targetStoragePath", slog.String("value", targetStoragePath), slog.String("serviceId", service.ServiceId));
+			slog.Debug("sourceStoragePath", slog.String("value", sourceStoragePath), slog.String("serviceId", service.ServiceId));
+
 			command := `rsync -avz --delete -e "ssh -i /ssh-key -p 2222 -o StrictHostKeyChecking=yes -o UserKnownHostsFile=/expected-host-key" \
-				root@tasks.`+ Config.Constants.HelperServiceName +`:/volume/ ` +storagePath;
+				`+ sourceStoragePath +" "+ targetStoragePath;
 
 			exec, err := DockerClient.ContainerExecCreate(context.Background(), Config.Constants.StorageContainerName, container.ExecOptions{
 				Cmd: []string{"sh", "-c", command},
@@ -64,30 +71,37 @@ func Run(Config cfg.Config) {
 				Tty: false,
 			});
 			if err != nil {
-				panic("Failed to create rsync exec!"+err.Error());
+				slog.Error("Failed to create rsync exec!", slog.Any("propagatedError", err));
+				os.Exit(1);
 			}
 
 
 			resp, err := DockerClient.ContainerExecAttach(context.Background(), exec.ID, container.ExecStartOptions{});
+			if err != nil {
+				slog.Error("Failed to create container exec!", slog.Any("propagatedError", err));
+			}
 			defer resp.Close();
 
 			io.Copy(os.Stdout, resp.Reader)
 
 			time.Sleep(30*time.Second);
-			fmt.Println("Cleaning Up: " + service.ServiceId);
+			slog.Info("Cleaning Up", slog.String("serviceId", service.ServiceId), slog.String("volumeId", volume));
 			cleanupService(Config, service);
-			fmt.Println("Done!");
+			slog.Info("Done!");
 		}
-		fmt.Println("Scaling up: "+service.ServiceId);
+		slog.Info("Scaling Up", slog.String("serviceId", service.ServiceId));
 		scale(Config, service.ServiceId, true);
-		fmt.Println("Done!");
+		slog.Info("Done!");
 	}
 
 	DockerClient.ContainerRemove(context.Background(), Config.Constants.StorageContainerName, container.RemoveOptions{
 		Force: true,
 	});
 
-	if !shutdown(Config){panic("Failed to shutdown docker api!");}
+	if !shutdown(Config){
+		slog.Error("Failed to shutdown docker api!");
+		os.Exit(1);
+	}
 }
 
 func getServices(Config cfg.Config)[]aService{

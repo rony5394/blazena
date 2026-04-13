@@ -5,6 +5,7 @@ import (
 	"github.com/rony5394/blazena/docker"
 	"github.com/rony5394/blazena/host"
 	cfg "github.com/rony5394/blazena/config"
+	"log/slog"
 );
 
 func main() {
@@ -12,7 +13,19 @@ func main() {
 		panic("Usage: blazena <mode>");
 	}
 
-	var config = cfg.GetConfig();
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}));
+	slog.SetDefault(logger);
+
+	config, err := cfg.GetConfig();
+
+	if(err != nil){
+		slog.Error("Failed to load config!", slog.Any("propagatedError", err.Error()));
+		os.Exit(1);
+	}
+
+	slog.Debug("Config", slog.Any("Value", config));
 
 	mode := os.Args[1];
 	switch mode {

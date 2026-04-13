@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -32,22 +33,27 @@ type aService struct{
 }
 
 func Run(Config cfg.Config){
-	theConfig = Config; 
+	// Before touching the line below think.
+	theConfig = Config;
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM);
 
 	var err error;
 	ApiClient, err = client.NewClientWithOpts(client.FromEnv);
 	if(err != nil){
-		panic("Docker client was not able to init from env!" + err.Error());
+		slog.Error("Failed to create docker client!", slog.String("note", "Try to look into DOCKER_HOST env var or check if socket exists and works"));
+		os.Exit(1);
 	}
 
 	info, err := ApiClient.Info(context.Background())
 	if(err != nil){
-		panic("Error getting info!" + err.Error());
+		slog.Error("Error getting info from docker socket!", slog.String("note", "This is kind of ping."));
+		os.Exit(1);
 	}
 
 	if(!info.Swarm.ControlAvailable){
-		panic("Node is not a swarm manager.");
+		slog.Error("This node is not a swarm manager!");
+		os.Exit(1);
 	}
 
 	server := &http.Server{
@@ -68,7 +74,7 @@ func Run(Config cfg.Config){
 		stop();
 	});
 
-	ApiClient.NetworkCreate(context.Background(), theConfig.Constants.OverlayNetworkName, network.CreateOptions{
+	ApiClient.NetworkCreate(context.Background(), Config.Constants.OverlayNetworkName, network.CreateOptions{
 		Attachable: true,
 		// Internal: true,
 		Driver: "overlay",
@@ -84,7 +90,8 @@ func Run(Config cfg.Config){
 
 		}
 		if(err != nil){
-			panic("Unable to start http server!" + err.Error());
+			slog.Error("Unable to start http server!", slog.Any("propagatedError", err));
+			os.Exit(1);
 		}
 
 	}();
@@ -96,7 +103,7 @@ func Run(Config cfg.Config){
 	fmt.Println("Stopping http server.");
 	server.Close();
 
-	ApiClient.NetworkRemove(context.Background(), theConfig.Constants.OverlayNetworkName);
+	ApiClient.NetworkRemove(context.Background(), Config.Constants.OverlayNetworkName);
 	ApiClient.ConfigRemove(context.Background(), "blazenaSSHPublicKey")
 	ApiClient.SecretRemove(context.Background(), "blazenaSSHHostPrivateKey");
 
@@ -110,6 +117,7 @@ func bearerAuth(w http.ResponseWriter, r *http.Request)bool {
 	if authHeader != expected {
 		w.WriteHeader(http.StatusUnauthorized)
 		fmt.Fprintln(w, "Unauthorized")
+		slog.Warn("Unauthorized request received", slog.Any("request", *r));
 		return false;
 	}
 	return true;
@@ -131,6 +139,16 @@ func listServices(w http.ResponseWriter, r *http.Request){
 
 	var services []aService;
 
+
+	nodes, err := ApiClient.NodeList(context.Background(), swarm.NodeListOptions{});
+
+	var validNodeHostnames []string;
+
+	for _, node := range nodes{
+		validNodeHostnames = append(validNodeHostnames, node.Description.Hostname);
+	}
+
+
 	for _, service := range list{
 		var settings map[string]string = service.Spec.Labels; 
 		
@@ -140,6 +158,12 @@ func listServices(w http.ResponseWriter, r *http.Request){
 		}
 
 		targetVolumes := strings.Split(settings["blazena.volumes"], ",");
+
+		if !contains(validNodeHostnames, settings["blazena.node"]) {
+			errMsg := "node with hostname:'"+ settings["blazena.node"] +"' does not exist.";
+			slog.Warn("Invalid Service Config!", slog.String("serviceId", service.ID), slog.String("errMessage", errMsg));
+			continue;
+		}
 
 		services = append(services, aService{
 			ServiceId: service.ID,
@@ -152,7 +176,8 @@ func listServices(w http.ResponseWriter, r *http.Request){
 	bytes, err := json.Marshal(services);
 
 	if err != nil{
-		panic("Error during response encoding!" + err.Error());
+		slog.Error("Error during response encoding!", slog.Any("propagatedError", err));
+		os.Exit(1);
 	}
 
 	fmt.Fprint(w, string(bytes));

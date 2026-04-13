@@ -3,6 +3,7 @@ package config;
 import (
 	"os"
 	"encoding/json"
+	"errors"
 );
 
 type Config struct {
@@ -26,14 +27,15 @@ type RegistryAuth struct {
 	Password string
 }
 
-func GetConfig() Config {
+func GetConfig()(Config, error){
 	var cfg Config;
 
 	rawConfig, err := os.ReadFile("/config.json");
 	if err != nil{
-		panic("Failed it load config file." + err.Error());
+		return cfg, errors.New("Failed it load config file." + err.Error());
 	}
 
+	// Set defaults
 	cfg.Constants.OverlayNetworkName = "blazenaPohar";
 	cfg.Constants.HelperServiceName = "blazenaHelper";
 	cfg.Constants.StorageContainerName = "blazenaStorage";
@@ -42,8 +44,8 @@ func GetConfig() Config {
 	err = json.Unmarshal(rawConfig, &cfg);
 
 	if err != nil{
-		panic("Failed to unmarshal config." + err.Error())
+		return cfg, errors.New("Failed to unmarshal config: " + err.Error());
 	}
 
-	return cfg;
+	return cfg, err;
 }
