@@ -14,6 +14,7 @@ import (
 
 	"net/http"
 
+	"github.com/docker/docker/api/types/mount"
 	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/api/types/swarm"
 	"github.com/docker/docker/client"
@@ -149,6 +150,7 @@ func listServices(w http.ResponseWriter, r *http.Request){
 	}
 
 
+	SERVICES:
 	for _, service := range list{
 		var settings map[string]string = service.Spec.Labels; 
 		
@@ -159,10 +161,28 @@ func listServices(w http.ResponseWriter, r *http.Request){
 
 		targetVolumes := strings.Split(settings["blazena.volumes"], ",");
 
+		var validVolumeNames []string;
+		for _, mnt := range service.Spec.TaskTemplate.ContainerSpec.Mounts{
+			if mnt.Type != mount.TypeVolume {
+				continue
+			}
+			validVolumeNames = append(validVolumeNames, mnt.Source);
+		}
+
 		if !contains(validNodeHostnames, settings["blazena.node"]) {
-			errMsg := "node with hostname:'"+ settings["blazena.node"] +"' does not exist.";
+			errMsg := "Node with hostname:'"+ settings["blazena.node"] +"' does not exist.";
 			slog.Warn("Invalid Service Config!", slog.String("serviceId", service.ID), slog.String("errMessage", errMsg));
-			continue;
+			continue SERVICES;
+		}
+
+		for _, volume := range targetVolumes{
+			if contains(validVolumeNames, volume){
+				continue;
+			}
+
+			errMsg := "Volume name '"+ volume + "' is not in the service spec!";
+			slog.Warn("Invalid Service Config!", slog.String("serviceId", service.ID), slog.String("errMessage", errMsg));
+			continue SERVICES;
 		}
 
 		services = append(services, aService{

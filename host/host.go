@@ -102,6 +102,8 @@ func Run(Config cfg.Config) {
 		slog.Error("Failed to shutdown docker api!");
 		os.Exit(1);
 	}
+
+	slog.Info("Finished whole backup run.");
 }
 
 func getServices(Config cfg.Config)[]aService{
