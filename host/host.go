@@ -25,6 +25,7 @@ type aService struct{
 	ServiceId string `json:"serviceId"`;
 	VolumeNames []string `json:"volumeNames"`;
 	Node string `json:"node"`;
+	Dependents []string `json:"dependents"`;
 }
 
 func Run(Config cfg.Config) {
@@ -45,6 +46,12 @@ func Run(Config cfg.Config) {
 	services := getServices(Config);
 
 	for _, service := range services {
+
+		for _, dependent := range service.Dependents {
+			slog.Info("Scaling Down Dependent", slog.String("serviceId", service.ServiceId), slog.String("dependentId", dependent));
+			scale(Config, dependent, false);
+			slog.Info("Done");
+		}
 
 		slog.Info("Scaling Down", slog.String("serviceId", service.ServiceId));
 		scale(Config, service.ServiceId, false);
@@ -89,9 +96,16 @@ func Run(Config cfg.Config) {
 			cleanupService(Config, service);
 			slog.Info("Done!");
 		}
+
 		slog.Info("Scaling Up", slog.String("serviceId", service.ServiceId));
 		scale(Config, service.ServiceId, true);
 		slog.Info("Done!");
+
+		for _, dependent := range service.Dependents {
+			slog.Info("Scaling Up Dependent", slog.String("serviceId", service.ServiceId), slog.String("dependentId", dependent));
+			scale(Config, dependent, true);
+			slog.Info("Done");
+		}
 	}
 
 	DockerClient.ContainerRemove(context.Background(), Config.Constants.StorageContainerName, container.RemoveOptions{
@@ -127,6 +141,7 @@ func getServices(Config cfg.Config)[]aService{
 	if err != nil {
 		panic("Failed to unmarshal response.");
 	}
+	slog.Debug("Services", slog.Any("value", services));
 	return services;
 }
 

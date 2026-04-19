@@ -31,6 +31,7 @@ type aService struct{
 	ServiceId string `json:"serviceId"`;
 	VolumeNames []string `json:"volumeNames"`;
 	Node string `json:"node"`;
+	Dependents []string `json:"dependents"`;
 }
 
 func Run(Config cfg.Config){
@@ -159,6 +160,12 @@ func listServices(w http.ResponseWriter, r *http.Request){
 			continue;
 		}
 
+		if !contains(validNodeHostnames, settings["blazena.node"]) {
+			errMsg := "Node with hostname:'"+ settings["blazena.node"] +"' does not exist.";
+			slog.Warn("Invalid Service Config!", slog.String("serviceId", service.ID), slog.String("errMessage", errMsg));
+			continue SERVICES;
+		}
+
 		targetVolumes := strings.Split(settings["blazena.volumes"], ",");
 
 		var validVolumeNames []string;
@@ -167,12 +174,6 @@ func listServices(w http.ResponseWriter, r *http.Request){
 				continue
 			}
 			validVolumeNames = append(validVolumeNames, mnt.Source);
-		}
-
-		if !contains(validNodeHostnames, settings["blazena.node"]) {
-			errMsg := "Node with hostname:'"+ settings["blazena.node"] +"' does not exist.";
-			slog.Warn("Invalid Service Config!", slog.String("serviceId", service.ID), slog.String("errMessage", errMsg));
-			continue SERVICES;
 		}
 
 		for _, volume := range targetVolumes{
@@ -185,10 +186,36 @@ func listServices(w http.ResponseWriter, r *http.Request){
 			continue SERVICES;
 		}
 
+		
+		var dependents []string;
+
+		if(settings["blazena.dependents"] != ""){
+			dependents = strings.Split(settings["blazena.dependents"], ",");
+		} else {
+			dependents = make([]string, 0);
+		}
+
+		var validDependents []string;
+		for _, x := range list{
+			validDependents = append(validDependents, x.Spec.Name);
+		}
+		
+		slog.Debug("validDependents", slog.Any("value", validDependents));
+		slog.Debug("dependents", slog.Any("value", dependents));
+
+		for _, dependent := range dependents {
+			if contains(validDependents, dependent){continue;}
+
+			errMsg := "Dependent named '"+ dependent +"' was not found in this cluster!";
+			slog.Warn("Invalid Service Config!", slog.String("serviceId", service.ID), slog.String("errMessage", errMsg));
+			continue SERVICES;
+		}
+
 		services = append(services, aService{
 			ServiceId: service.ID,
 			VolumeNames: targetVolumes,
 			Node: settings["blazena.node"],
+			Dependents: dependents,
 		});
 
 	}
