@@ -47,6 +47,9 @@ func main() {
 		case "host":
 			host.Run(config);	
 		break;
+		case "pull":
+			os.Exit(0);
+		break;
 		default:
 			panic("Invalid runtime mode!");
 	}

@@ -41,6 +41,7 @@ func Run(Config cfg.Config) {
 
 	sshKeyPair := shared.GenerateSSHKeypair();
 	sshHostPkPem := exchangeKeys(Config, string(sshKeyPair.Public));
+	go prepullImage(Config);
 	createStorageContainer(Config, DockerClient, sshKeyPair.Private, sshHostPkPem);
 
 	services := getServices(Config);

@@ -37,7 +37,9 @@ func scale(Config cfg.Config, serviceId string, up bool)bool{
 	rq.Header.Set("Authorization", "Bearer "+ token);
 	rq.Close = true;
 	rs, err := http.DefaultClient.Do(rq);
-	defer rs.Body.Close();
+	if err == nil {
+	rs.Body.Close();
+	}
 
 	if err != nil{
 		panic("Failed to send http request"+ err.Error());

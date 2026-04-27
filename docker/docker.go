@@ -27,6 +27,8 @@ var scale sync.Map;
 var token string = "12345";
 var theConfig cfg.Config;
 
+var theShutdownFuncPointer *context.CancelFunc;
+
 type aService struct{
 	ServiceId string `json:"serviceId"`;
 	VolumeNames []string `json:"volumeNames"`;
@@ -39,6 +41,7 @@ func Run(Config cfg.Config){
 	theConfig = Config;
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM);
+	theShutdownFuncPointer = &stop;
 
 	var err error;
 	ApiClient, err = client.NewClientWithOpts(client.FromEnv);
@@ -62,6 +65,7 @@ func Run(Config cfg.Config){
 		Addr: ":1234",
 	}
 
+	http.HandleFunc("/prepull", prepullImage);
 	http.HandleFunc("/services", listServices);
 	http.HandleFunc("/scale/up", scaleUp);
 	http.HandleFunc("/scale/down", scaleDown);
