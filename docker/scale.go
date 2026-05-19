@@ -3,7 +3,9 @@ package docker
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"encoding/json"
@@ -53,8 +55,7 @@ func scaleDown(w http.ResponseWriter, r *http.Request){
 	newScale := uint64(0);
 	updatedSpec.Mode.Replicated.Replicas = &newScale;
 	updatedSpec.Labels["blazena.scaledDown"] = "true";
-
-	scale.Store(serviceId, *originalScale);
+	updatedSpec.Labels["blazena.originalScale"] = strconv.FormatUint(*originalScale, 10);
 
 	_, err = ApiClient.ServiceUpdate(context.Background(), serviceId, inspectresoult.Version, updatedSpec, swarm.ServiceUpdateOptions{}); 
 	if(err != nil){
@@ -99,19 +100,21 @@ func scaleUp(w http.ResponseWriter, r *http.Request){
 		return;
 	}
 
-	originalScale, ok := scale.Load(serviceId);  
-	if(!ok){
+	originalScale := inspectresoult.Spec.Labels["blazena.originalScale"];
+
+	if(originalScale == ""){
 		panic("Its not okay!");
 	}
 
-	originalScaleChecked, ok := originalScale.(uint64);
-	if(!ok){
-		panic("Its very not okay!")
+	originalScaleChecked, err := strconv.ParseUint(originalScale, 10, 64);
+	if(err != nil){
+		panic("Its very not okay!"+ err.Error())
 	}
 	updatedSpec := inspectresoult.Spec;
 
 	updatedSpec.Mode.Replicated.Replicas = &originalScaleChecked;
 	delete(updatedSpec.Labels, "blazena.scaledDown");
+	delete(updatedSpec.Labels, "blazena.originalScale");
 
 	ApiClient.ServiceUpdate(context.Background(), serviceId, inspectresoult.Version, updatedSpec, swarm.ServiceUpdateOptions{});
 

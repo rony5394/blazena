@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -23,7 +22,6 @@ import (
 
 // Add mutex.
 var ApiClient *client.Client;
-var scale sync.Map;
 var token string = "12345";
 var theConfig cfg.Config;
 
