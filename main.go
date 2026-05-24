@@ -1,12 +1,14 @@
 package main
 
 import (
+	"log/slog"
 	"os"
+	"time"
+
+	cfg "github.com/rony5394/blazena/config"
 	"github.com/rony5394/blazena/docker"
 	"github.com/rony5394/blazena/host"
-	cfg "github.com/rony5394/blazena/config"
-	"log/slog"
-);
+)
 
 /*
 	If the exit code is X then it means Y:
@@ -39,6 +41,8 @@ func main() {
 
 	slog.Debug("Config", slog.Any("Value", config));
 
+	startTime := time.Now();
+
 	mode := os.Args[1];
 	switch mode {
 		case "docker":
@@ -53,4 +57,6 @@ func main() {
 		default:
 			panic("Invalid runtime mode!");
 	}
+
+	slog.Debug("Whole run took", slog.String("time", time.Since(startTime).String()));
 }

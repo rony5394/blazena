@@ -5,6 +5,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -61,9 +62,10 @@ func scaleDown(w http.ResponseWriter, r *http.Request){
 	if(err != nil){
 		panic("Failed to update service."+ err.Error());
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), theConfig.Constants.ServiceScaleTimeout);
+	defer cancel();	
 
-	//TODO: Add proper wait system
-	time.Sleep(15 * time.Second);
+	waitForScale(serviceId, ctx, 0);
 }
 
 func scaleUp(w http.ResponseWriter, r *http.Request){
@@ -118,6 +120,44 @@ func scaleUp(w http.ResponseWriter, r *http.Request){
 
 	ApiClient.ServiceUpdate(context.Background(), serviceId, inspectresoult.Version, updatedSpec, swarm.ServiceUpdateOptions{});
 
-	//TODO: Add proper wait system
-	time.Sleep(15 * time.Second);
+	ctx, cancel := context.WithTimeout(context.Background(), theConfig.Constants.ServiceScaleTimeout);
+	defer cancel();	
+
+	waitForScale(serviceId, ctx, int(originalScaleChecked));
+}
+
+func waitForScale(serviceId string, ctx context.Context, desiredCount int){
+	startTime := time.Now();
+	for ctx.Err() == nil {
+		tasks, err := ApiClient.TaskList(context.Background(), swarm.TaskListOptions{});
+
+		if err != nil {
+			slog.Error("Failed to list tasks.", slog.Any("propagatedError", err));
+			os.Exit(1);
+		}
+
+		var running int;
+		for _, task := range tasks {
+			if task.ServiceID != serviceId {
+				continue;
+			}
+
+			if task.Status.State == swarm.TaskStateRunning{
+				running ++;
+			}
+		}
+
+		if running == desiredCount {
+			slog.Debug("Rescaled Service",
+				slog.String("serviceId", serviceId),
+				slog.Any("took", time.Since(startTime)),
+				slog.Any("targetScale", desiredCount),
+			);
+			return;
+		}
+		time.Sleep(1*time.Second);
+	}
+	if ctx.Err() == context.DeadlineExceeded{
+		slog.Error("Failed to rescale service in given time.", slog.Any("serviceId", serviceId));
+	}
 }

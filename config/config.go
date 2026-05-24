@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"time"
 
 	"github.com/docker/docker/api/types/registry"
 );
@@ -24,6 +25,7 @@ type Config struct {
 		HelperServiceName string
 		StorageContainerName string
 		PrepullImageServiceName string
+		ServiceScaleTimeout time.Duration
 	}
 }
 
@@ -45,6 +47,7 @@ func GetConfig()(Config, error){
 	cfg.Constants.HelperServiceName = "blazenaHelper";
 	cfg.Constants.StorageContainerName = "blazenaStorage";
 	cfg.Constants.PrepullImageServiceName = "blazenaPrepull";
+	cfg.Constants.ServiceScaleTimeout = time.Second * 15; 
 
 	err = json.Unmarshal(rawConfig, &cfg);
 
