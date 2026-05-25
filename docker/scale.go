@@ -118,7 +118,12 @@ func scaleUp(w http.ResponseWriter, r *http.Request){
 	delete(updatedSpec.Labels, "blazena.scaledDown");
 	delete(updatedSpec.Labels, "blazena.originalScale");
 
-	ApiClient.ServiceUpdate(context.Background(), serviceId, inspectresoult.Version, updatedSpec, swarm.ServiceUpdateOptions{});
+	_, err = ApiClient.ServiceUpdate(context.Background(), serviceId, inspectresoult.Version, updatedSpec, swarm.ServiceUpdateOptions{});
+
+	if err != nil {
+		slog.Error("Failed to update/scale a service.", slog.Any("propagatedError", err), slog.String("serviceId", serviceId));
+		os.Exit(1);
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), theConfig.Constants.ServiceScaleTimeout);
 	defer cancel();	

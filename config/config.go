@@ -26,6 +26,8 @@ type Config struct {
 		StorageContainerName string
 		PrepullImageServiceName string
 		ServiceScaleTimeout time.Duration
+		SSHClientPKConfigName string
+		SSHHostSKSecretName string
 	}
 }
 
@@ -48,6 +50,8 @@ func GetConfig()(Config, error){
 	cfg.Constants.StorageContainerName = "blazenaStorage";
 	cfg.Constants.PrepullImageServiceName = "blazenaPrepull";
 	cfg.Constants.ServiceScaleTimeout = time.Second * 15; 
+	cfg.Constants.SSHClientPKConfigName = "blazenaSSHClientPublicKey";
+	cfg.Constants.SSHHostSKSecretName = "blazenaSSHHostPrivateKey";
 
 	err = json.Unmarshal(rawConfig, &cfg);
 

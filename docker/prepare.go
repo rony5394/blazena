@@ -53,6 +53,7 @@ func prepare(w http.ResponseWriter, r *http.Request){
 	pullBlazenaImage();
 	createHelper(theConfig, labels["blazena.node"], bodyDecoded.VolumeId);
 
+	//TODO: add proper waiting system.
 	time.Sleep(7*time.Second);
 
 	fmt.Fprint(w, bodyDecoded.ServiceId);
@@ -129,7 +130,7 @@ func createHelper(Config cfg.Config, targetNode string, targetVolume string){
 	stopGracePeriod := time.Second * 5;
 	helperCommand := `/usr/sbin/sshd -h /host-key -p 2222 -D`;
 
-	sshKeyConfigId, err := getConfigIDByName(ApiClient, "blazenaSSHPublicKey");
+	sshKeyConfigId, err := getConfigIDByName(ApiClient, theConfig.Constants.SSHClientPKConfigName);
 
 	if err != nil {
 		panic("Docker needs both id and name to mount config for some reason and getting id of it failed!"+err.Error());
@@ -163,7 +164,7 @@ func createHelper(Config cfg.Config, targetNode string, targetVolume string){
 				Configs: []*swarm.ConfigReference{
 					&swarm.ConfigReference{
 						ConfigID: sshKeyConfigId, 
-						ConfigName: "blazenaSSHPublicKey",
+						ConfigName: theConfig.Constants.SSHClientPKConfigName,
 						File: &swarm.ConfigReferenceFileTarget{
 							Name: "/root/.ssh/authorized_keys",
 							Mode: 0600,
@@ -175,7 +176,7 @@ func createHelper(Config cfg.Config, targetNode string, targetVolume string){
 				Secrets: []*swarm.SecretReference{
 					&swarm.SecretReference{
 						SecretID: sshHostKeySecretId,
-						SecretName: "blazenaSSHHostPrivateKey",
+						SecretName: theConfig.Constants.SSHHostSKSecretName,
 						File: &swarm.SecretReferenceFileTarget{
 							Name: "/host-key",
 							Mode: 0600,

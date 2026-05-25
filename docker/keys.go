@@ -1,11 +1,14 @@
 package docker
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
-	"context"
+	"os"
+
 	"github.com/docker/docker/api/types/swarm"
 
 	"github.com/rony5394/blazena/shared"
@@ -32,22 +35,34 @@ func exchangeKeys(w http.ResponseWriter, r *http.Request){
 	if err != nil {
 		panic("Failed to unmarshal json."+ err.Error());
 	}
-	sshPkPem := bodyDecoded.SshPkPem;
+	sshClientPkPem := bodyDecoded.SshPkPem;
 	hostKeypair := shared.GenerateSSHKeypair();
+
 	encoded, err := json.Marshal(struct{HostPkPem string `json:"hostPkPem"`}{HostPkPem: hostKeypair.Public});
 	if err != nil {
-		panic("I wonder how. I wonder why?"+err.Error());
+		slog.Error("Failed to marshal host pk into response.", slog.Any("propagatedError", err));
+		os.Exit(42);
 	}
 
-	ApiClient.ConfigCreate(context.Background(), swarm.ConfigSpec{
-		Data: []byte(sshPkPem), 
-		Annotations: swarm.Annotations{Name: "blazenaSSHPublicKey"},
+	_, err = ApiClient.ConfigCreate(context.Background(), swarm.ConfigSpec{
+		Data: []byte(sshClientPkPem), 
+		Annotations: swarm.Annotations{Name: theConfig.Constants.SSHClientPKConfigName},
 	});
 
-	ApiClient.SecretCreate(context.Background(), swarm.SecretSpec{
+	if err != nil {
+		slog.Error("Failed to create a config.", slog.Any("propagatedError", err));
+		os.Exit(1);
+	}
+
+	_, err = ApiClient.SecretCreate(context.Background(), swarm.SecretSpec{
 		Data: []byte(hostKeypair.Private),
-		Annotations: swarm.Annotations{Name: "blazenaSSHHostPrivateKey"},
+		Annotations: swarm.Annotations{Name: theConfig.Constants.SSHHostSKSecretName}, 
 	});
+
+	if err != nil {
+		slog.Error("Failed to create a secret.", slog.Any("propagatedError", err));
+		os.Exit(1);
+	}
 
 
 	fmt.Fprint(w, string(encoded));

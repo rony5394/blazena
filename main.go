@@ -10,6 +10,8 @@ import (
 	"github.com/rony5394/blazena/host"
 )
 
+//TODO: consider adding blazena.doNotTouch
+
 /*
 	If the exit code is X then it means Y:
 
